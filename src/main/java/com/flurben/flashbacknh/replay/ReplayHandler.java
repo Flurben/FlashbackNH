@@ -113,6 +113,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private int spectatingId = Integer.MIN_VALUE;
     private double[] pendingCameraPos;
     private boolean cameraPlaced;
+    private int cameraDimension = Integer.MIN_VALUE;
 
     private long recordedWorldTime = -1;
     private int recordedWorldTimeTick;
@@ -269,14 +270,11 @@ public final class ReplayHandler implements PacketFilter.Listener {
         if (camera == null) return;
         Entity local = localPlayerId != Integer.MIN_VALUE ? mc.theWorld.getEntityByID(localPlayerId) : null;
         if (local != null) {
-            // a little behind the recording player, looking the same way, rather than inside their head
-            double yaw = Math.toRadians(local.rotationYaw);
-            double pitch = Math.toRadians(local.rotationPitch);
-            double back = 3.0D;
-            camera.setCameraPosition(
-                local.posX + Math.sin(yaw) * Math.cos(pitch) * back,
-                local.boundingBox.minY + eyeHeight(local) + Math.sin(pitch) * back,
-                local.posZ - Math.cos(yaw) * Math.cos(pitch) * back,
+            placeBehind(
+                camera,
+                local.posX,
+                local.boundingBox.minY + eyeHeight(local),
+                local.posZ,
                 local.rotationYaw,
                 local.rotationPitch);
         } else if (pendingCameraPos != null) {
@@ -474,6 +472,33 @@ public final class ReplayHandler implements PacketFilter.Listener {
         connection.processAll();
         settleEntities();
         if (!cameraPlaced && mc.theWorld != null) placeInitialCamera();
+        followDimensionChange();
+    }
+
+    /** Coordinates mean nothing in another dimension, so the camera moves back to the recording player. */
+    private void followDimensionChange() {
+        CameraEntity camera = getCamera();
+        if (camera == null) return;
+        if (cameraDimension == Integer.MIN_VALUE) cameraDimension = camera.dimension;
+        // the position packet is what ends the terrain loading screen in the real game too
+        if (camera.dimension == cameraDimension || pendingCameraPos == null) return;
+        cameraDimension = camera.dimension;
+        double[] p = pendingCameraPos;
+        placeBehind(camera, p[0], p[1], p[2], (float) p[3], (float) p[4]);
+        cameraPlaced = true;
+    }
+
+    /** A little behind a position, looking the same way, rather than inside the player's head. */
+    private static void placeBehind(CameraEntity camera, double x, double y, double z, float yaw, float pitch) {
+        double yawRad = Math.toRadians(yaw);
+        double pitchRad = Math.toRadians(pitch);
+        double back = 3.0D;
+        camera.setCameraPosition(
+            x + Math.sin(yawRad) * Math.cos(pitchRad) * back,
+            y + Math.sin(pitchRad) * back,
+            z - Math.cos(yawRad) * Math.cos(pitchRad) * back,
+            yaw,
+            pitch);
     }
 
     /** After a jump, put interpolating entities at their final positions. */
@@ -532,6 +557,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
                 byte[] data = PacketFilter.filter(rec.data, this);
                 if (data == null) return;
                 int id = PacketCodec.peekId(data);
+                if (id == 0x07) pendingCameraPos = null;
                 if (id == 0x03) trackTime(data);
                 else if (id == 0x2B) trackWeather(data);
                 Packet packet;
@@ -598,7 +624,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
     @Override
     public void onPlayerPosLook(double x, double y, double z, float yaw, float pitch) {
-        if (!cameraPlaced) pendingCameraPos = new double[] { x, y, z, yaw, pitch };
+        pendingCameraPos = new double[] { x, y, z, yaw, pitch };
     }
 
     private void applyLocalMove(byte[] d) {
@@ -741,6 +767,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
     public void onRunTickEnd() {
         worldTick = false;
+        if (mc.theWorld != null) followDimensionChange();
     }
 
     /** Called every frame before the world is rendered. */

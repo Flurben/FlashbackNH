@@ -20,7 +20,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.multiplayer.GuiConnecting;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
@@ -212,7 +211,12 @@ public final class DevDriver {
                 mc.displayGuiScreen(new GuiMainMenu());
                 break;
             case "connect":
-                mc.displayGuiScreen(new GuiConnecting(new GuiMainMenu(), mc, a[1], Integer.parseInt(a[2])));
+                cpw.mods.fml.client.FMLClientHandler.instance()
+                    .setupServerList();
+                cpw.mods.fml.client.FMLClientHandler.instance()
+                    .connectToServer(
+                        new net.minecraft.client.gui.GuiMainMenu(),
+                        new net.minecraft.client.multiplayer.ServerData("test", a[1] + ":" + a[2]));
                 break;
             case "chat":
                 mc.thePlayer.sendChatMessage(line.substring(5));
