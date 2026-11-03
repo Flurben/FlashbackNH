@@ -1,0 +1,21 @@
+{
+  "modListVersion": 2,
+  "modList": [{
+    "modid": "${modId}",
+    "name": "${modName}",
+    "description": "Record your gameplay, play it back and create cinematic shots. An unofficial reimplementation of Flashback's features for GT New Horizons (Minecraft 1.7.10). Client-side only.",
+    "version": "${modVersion}",
+    "mcversion": "${minecraftVersion}",
+    "url": "https://github.com/Flurben/FlashbackNH",
+    "updateUrl": "",
+    "authorList": ["Flurben"],
+    "credits": "Inspired by Flashback by Moulberry. Not affiliated with or endorsed by the Flashback project.",
+    "logoFile": "",
+    "screenshots": [],
+    "parent": "",
+    "requiredMods": [],
+    "dependencies": [],
+    "dependants": [],
+    "useDependencyInformation": false
+  }]
+}

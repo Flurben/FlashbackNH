@@ -1,0 +1,27 @@
+{
+  "required": true,
+  "minVersion": "0.8.5-GTNH",
+  "package": "com.flurben.flashbacknh.mixins",
+  "refmap": "mixins.flashbacknh.refmap.json",
+  "target": "@env(DEFAULT)",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [],
+  "client": [
+    "early.AccessorChunkProviderClient",
+    "early.AccessorEntityLivingBase",
+    "early.AccessorEntityOtherPlayerMP",
+    "early.AccessorMinecraft",
+    "early.AccessorNetworkManager",
+    "early.AccessorPlayerControllerMP",
+    "early.AccessorRenderGlobal",
+    "early.InvokerEntityTrackerEntry",
+    "early.MixinEffectRenderer",
+    "early.MixinEntityRenderer",
+    "early.MixinGuiIngame",
+    "early.MixinMinecraft",
+    "early.MixinPlayerControllerMP",
+    "early.MixinRenderManager",
+    "early.MixinTimer"
+  ],
+  "server": []
+}
