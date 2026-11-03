@@ -39,9 +39,11 @@ public class ClientProxy extends CommonProxy {
             .bus()
             .register(new ServerTasks());
         if (com.flurben.flashbacknh.dev.DevDriver.enabled()) {
+            com.flurben.flashbacknh.dev.DevDriver driver = new com.flurben.flashbacknh.dev.DevDriver();
             FMLCommonHandler.instance()
                 .bus()
-                .register(new com.flurben.flashbacknh.dev.DevDriver());
+                .register(driver);
+            MinecraftForge.EVENT_BUS.register(driver);
         }
         FlashbackNH.LOG.info("FlashbackNH {} loaded", Tags.VERSION);
     }

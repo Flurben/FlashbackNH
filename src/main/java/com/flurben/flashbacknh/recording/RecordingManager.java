@@ -95,7 +95,7 @@ public final class RecordingManager {
         boolean wasStarted = r.isStarted();
         r.tick();
         if (!wasStarted && r.isStarted() && Config.showRecordingToasts) {
-            Notifications.show("Flashback", "Started recording");
+            Notifications.show("FlashbackNH", "Started recording");
         }
     }
 
@@ -115,10 +115,10 @@ public final class RecordingManager {
             r.attach();
             current = r;
             r.tick(); // begin immediately (snapshot)
-            if (Config.showRecordingToasts) Notifications.show("Flashback", "Started recording");
+            if (Config.showRecordingToasts) Notifications.show("FlashbackNH", "Started recording");
         } catch (Throwable t) {
             FlashbackNH.LOG.error("Unable to start recording", t);
-            Notifications.show("Flashback", "Unable to start recording: " + t.getMessage());
+            Notifications.show("FlashbackNH", "Unable to start recording: " + t.getMessage());
         }
     }
 
@@ -127,7 +127,7 @@ public final class RecordingManager {
         if (r == null) return;
         r.setPaused(!r.isPaused());
         if (Config.showRecordingToasts) {
-            Notifications.show("Flashback", r.isPaused() ? "Paused recording" : "Unpaused recording");
+            Notifications.show("FlashbackNH", r.isPaused() ? "Paused recording" : "Unpaused recording");
         }
     }
 
@@ -141,7 +141,7 @@ public final class RecordingManager {
         } catch (IOException e) {
             FlashbackNH.LOG.warn("Unable to delete {}", r.getWorkDir(), e);
         }
-        if (Config.showRecordingToasts && r.isStarted()) Notifications.show("Flashback", "Cancelled recording");
+        if (Config.showRecordingToasts && r.isStarted()) Notifications.show("FlashbackNH", "Cancelled recording");
     }
 
     /** Stops the recording and either quicksaves it or asks for a name. */
@@ -159,7 +159,7 @@ public final class RecordingManager {
             } catch (IOException ignored) {}
             return;
         }
-        if (Config.showRecordingToasts) Notifications.show("Flashback", "Finished recording");
+        if (Config.showRecordingToasts) Notifications.show("FlashbackNH", "Finished recording");
         ReplayMeta meta = r.getMeta();
         if (Config.quicksave) {
             saveAsync(r.getWorkDir(), meta, defaultName(meta));
@@ -176,7 +176,7 @@ public final class RecordingManager {
         }
         int[] colors = { 0xFFD94040, 0xFF40A0E0, 0xFF50D050, 0xFFE0C040 };
         r.addMarker(colors[Math.max(0, Math.min(3, index))], "", true);
-        Notifications.show("Flashback", "Added marker #" + (index + 1));
+        Notifications.show("FlashbackNH", "Added marker #" + (index + 1));
     }
 
     public static String defaultName(ReplayMeta meta) {

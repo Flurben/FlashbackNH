@@ -287,7 +287,7 @@ public final class Recorder {
                     begin();
                 } catch (Throwable e) {
                     FlashbackNH.LOG.error("Unable to start recording", e);
-                    Notifications.show("Flashback", "Unable to start recording: " + e);
+                    Notifications.show("FlashbackNH", "Unable to start recording: " + e);
                     RecordingManager.INSTANCE.cancel();
                 }
             }

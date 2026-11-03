@@ -447,7 +447,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             }
         } catch (Throwable t) {
             FlashbackNH.LOG.error("Seek failed", t);
-            Notifications.show("Flashback", "Seek failed: " + t.getMessage(), 6000);
+            Notifications.show("FlashbackNH", "Seek failed: " + t.getMessage(), 6000);
             if (mc.theWorld == null || mc.thePlayer == null) {
                 close(true);
                 mc.displayGuiScreen(new GuiReplaySelect(new GuiMainMenu()));
@@ -851,12 +851,15 @@ public final class ReplayHandler implements PacketFilter.Listener {
     /**
      * EntityRenderer.updateRenderer is the only thing that invalidates the lightmap and moves the fog brightness, and
      * it does not run on frozen ticks. Without this the world renders black until the replay first plays, and time of
-     * day overrides have no effect while paused.
+     * day overrides have no effect while paused. The hand FOV modifier is the same: it starts at zero in a new client,
+     * so a replay opened from the main menu would use a field of view of 0 until it first plays.
      */
     private void updateFrozenRendererState(CameraEntity camera) {
         AccessorEntityRenderer renderer = (AccessorEntityRenderer) mc.entityRenderer;
         renderer.flashbacknh$setLightmapUpdateNeeded(true);
         if (!paused || clockDriver != null) return;
+        renderer.flashbacknh$setFovModifierHand(1.0F);
+        renderer.flashbacknh$setFovModifierHandPrev(1.0F);
         Entity view = mc.renderViewEntity != null ? mc.renderViewEntity : camera;
         float light = mc.theWorld.getLightBrightness(
             MathHelper.floor_double(view.posX),

@@ -98,6 +98,15 @@ public final class DevDriver {
         }
     }
 
+    @SubscribeEvent
+    public void onGuiOpen(net.minecraftforge.client.event.GuiOpenEvent event) {
+        FlashbackNH.LOG.info(
+            "[dev] gui -> {}",
+            event.gui == null ? "null"
+                : event.gui.getClass()
+                    .getName());
+    }
+
     private void poll() throws IOException {
         long now = System.currentTimeMillis();
         if (now < nextPoll) return;
@@ -269,6 +278,18 @@ public final class DevDriver {
             case "pausemenu":
                 mc.displayInGameMenu();
                 break;
+            case "dim": {
+                // moves the player to another dimension through the integrated server
+                final int target = Integer.parseInt(a[1]);
+                final String name = mc.thePlayer.getCommandSenderName();
+                com.flurben.flashbacknh.util.ServerTasks.schedule(() -> {
+                    net.minecraft.entity.player.EntityPlayerMP player = net.minecraft.server.MinecraftServer.getServer()
+                        .getConfigurationManager()
+                        .func_152612_a(name);
+                    if (player != null) player.travelToDimension(target);
+                });
+                break;
+            }
             case "hidegui":
                 mc.gameSettings.hideGUI = a[1].equals("on");
                 break;

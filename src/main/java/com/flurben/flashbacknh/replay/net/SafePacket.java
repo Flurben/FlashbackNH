@@ -21,6 +21,13 @@ public final class SafePacket extends Packet {
 
     private static final Set<String> warned = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
 
+    private static boolean processing;
+
+    /** True while a replayed packet is being handled (client thread only). */
+    public static boolean isProcessing() {
+        return processing;
+    }
+
     private final Packet packet;
 
     public SafePacket(Packet packet) {
@@ -36,6 +43,7 @@ public final class SafePacket extends Packet {
     @Override
     public void processPacket(INetHandler handler) {
         String key = null;
+        processing = true;
         try {
             if (packet instanceof FMLProxyPacket) {
                 key = "channel " + ((FMLProxyPacket) packet).channel();
@@ -49,6 +57,8 @@ public final class SafePacket extends Packet {
             if (warned.add(key)) {
                 FlashbackNH.LOG.error("Packet {} failed during replay (further errors hidden)", key, t);
             }
+        } finally {
+            processing = false;
         }
     }
 }

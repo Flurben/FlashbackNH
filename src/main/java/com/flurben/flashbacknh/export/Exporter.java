@@ -84,7 +84,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         if (!OpenGlHelper.isFramebufferEnabled()) {
             settings.width = Math.min(settings.width, Display.getWidth() & ~1);
             settings.height = Math.min(settings.height, Display.getHeight() & ~1);
-            Notifications.show("Flashback", "Framebuffers are disabled: exporting at window size", 6000);
+            Notifications.show("FlashbackNH", "Framebuffers are disabled: exporting at window size", 6000);
         }
         if (settings.endTick <= settings.startTick) throw new IOException("The export range is empty");
         FrameEncoder encoder;
@@ -306,7 +306,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         finished = true;
         restore();
         final File out = settings.output;
-        Notifications.show("Flashback", "Finishing export...");
+        Notifications.show("FlashbackNH", "Finishing export...");
         Thread t = new Thread(() -> {
             try {
                 encoder.close();
@@ -336,7 +336,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         finished = true;
         encoder.abort();
         restore();
-        Notifications.show("Flashback", message, 6000);
+        Notifications.show("FlashbackNH", message, 6000);
     }
 
     public int getFramesWritten() {

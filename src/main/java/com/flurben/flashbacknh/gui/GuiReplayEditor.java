@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.minecraft.client.entity.EntityOtherPlayerMP;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
@@ -12,6 +13,7 @@ import net.minecraft.util.MathHelper;
 
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.GL11;
 
 import com.flurben.flashbacknh.Config;
 import com.flurben.flashbacknh.editor.EditorState;
@@ -408,10 +410,10 @@ public class GuiReplayEditor extends GuiScreen {
             }
             x += w;
         }
-        String title = h.meta.name + "  -  "
-            + ReplayMeta.formatTicks(h.getCurrentTick())
-            + " / "
-            + ReplayMeta.formatTicks(h.getTotalTicks() - 1);
+        String title = ReplayMeta.formatTicks(h.getCurrentTick()) + " / "
+            + ReplayMeta.formatTicks(h.getTotalTicks() - 1)
+            + "  -  "
+            + h.meta.name;
         ui.text(ui.trim(title, width - x - 80), x + 10, 3, Ui.TEXT_DIM);
         if (h.isSpectating()) {
             Entity e = h.getSpectating();
@@ -486,8 +488,8 @@ public class GuiReplayEditor extends GuiScreen {
         if (ui.button("In", rx, y, 30, 14, e.inPoint >= 0, "Set in point (I)")) keyTyped('i', Keyboard.KEY_I);
         rx -= 50;
         if (ui.button("Marker", rx, y, 48, 14, false, "Add marker (M)")) addMarker();
-        String time = ReplayMeta.formatTicks(h.getCurrentTick()) + " (" + h.getCurrentTick() + ")";
-        ui.text(ui.trim(time, rx - bx - 4), bx, y + 3, Ui.TEXT_DIM);
+        String time = "Tick " + h.getCurrentTick();
+        if (ui.width(time) <= rx - bx - 4) ui.text(time, bx, y + 3, Ui.TEXT_DIM);
 
         // ruler
         int rulerY = tlTop + CONTROLS_H;
@@ -746,7 +748,7 @@ public class GuiReplayEditor extends GuiScreen {
             case CAMERA: {
                 if (cam == null) return;
                 if (h.isSpectating()) {
-                    Notifications.show("Flashback", "Camera keyframes aren't needed while spectating");
+                    Notifications.show("FlashbackNH", "Camera keyframes aren't needed while spectating");
                     return;
                 }
                 values = new double[] { cam.posX, cam.posY, cam.posZ, cam.rotationYaw, cam.rotationPitch,
@@ -780,7 +782,7 @@ public class GuiReplayEditor extends GuiScreen {
         ReplayHandler h = handler();
         if (h == null || selection.isEmpty()) return;
         for (Selection s : selection) s.track.keyframes.remove(s.keyframe);
-        Notifications.show("Flashback", "Deleted " + selection.size() + " keyframe(s)");
+        Notifications.show("FlashbackNH", "Deleted " + selection.size() + " keyframe(s)");
         selection.clear();
         h.markEditorDirty();
     }
@@ -795,7 +797,7 @@ public class GuiReplayEditor extends GuiScreen {
             copy.tick -= base;
             clipboard.add(new Object[] { s.track.type, copy });
         }
-        Notifications.show("Flashback", "Copied " + clipboard.size() + " keyframe(s)");
+        Notifications.show("FlashbackNH", "Copied " + clipboard.size() + " keyframe(s)");
     }
 
     private void paste() {
@@ -811,7 +813,7 @@ public class GuiReplayEditor extends GuiScreen {
             selection.add(new Selection(track, k));
         }
         h.markEditorDirty();
-        Notifications.show("Flashback", "Pasted " + clipboard.size() + " keyframe(s)");
+        Notifications.show("FlashbackNH", "Pasted " + clipboard.size() + " keyframe(s)");
     }
 
     private void selectAll() {
@@ -858,7 +860,7 @@ public class GuiReplayEditor extends GuiScreen {
         }
         h.editor.markers.add(m);
         h.markEditorDirty();
-        Notifications.show("Flashback", "Added marker at " + ReplayMeta.formatTicks(m.tick));
+        Notifications.show("FlashbackNH", "Added marker at " + ReplayMeta.formatTicks(m.tick));
     }
 
     private void openKeyframeMenu(final KeyframeTrack track, final Keyframe k, int x, int y) {
@@ -1039,7 +1041,7 @@ public class GuiReplayEditor extends GuiScreen {
                 else if (index == 1) {
                     h.markEditorDirty();
                     h.saveEditorAsync();
-                    Notifications.show("Flashback", "Saved editor state");
+                    Notifications.show("FlashbackNH", "Saved editor state");
                 } else if (index == 2) h.exit();
                 break;
             case "Window":
@@ -1086,11 +1088,17 @@ public class GuiReplayEditor extends GuiScreen {
             return;
         }
         ui.separator(px, top + 15, pw);
+        ui.block(x, top, PANEL_W, 18);
         int scroll = ui.takeScroll(x, top, PANEL_W, bottom - top);
         panelScroll = Math.max(0, panelScroll - scroll * 12);
         int y = top + 20 - panelScroll;
         int clipTop = top + 18;
 
+        // the content may be taller than the space above the timeline; it scrolls and must not draw over it
+        ScaledResolution scaled = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
+        int factor = scaled.getScaleFactor();
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(x * factor, mc.displayHeight - bottom * factor, PANEL_W * factor, (bottom - clipTop) * factor);
         switch (panel) {
             case PLAYERS:
                 y = drawPlayers(h, px, y, pw, clipTop, bottom);
@@ -1109,6 +1117,7 @@ public class GuiReplayEditor extends GuiScreen {
                 break;
             default:
         }
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
         int contentH = y + panelScroll - (top + 20);
         int visible = bottom - top - 22;
         if (panelScroll > Math.max(0, contentH - visible)) panelScroll = Math.max(0, contentH - visible);
@@ -1162,7 +1171,7 @@ public class GuiReplayEditor extends GuiScreen {
             actions.add(() -> h.spectate(e));
         }
         if (items.isEmpty()) {
-            Notifications.show("Flashback", "No mobs within 64 blocks");
+            Notifications.show("FlashbackNH", "No mobs within 64 blocks");
             return;
         }
         showContextMenu(items, actions, ui.mouseX, ui.mouseY);

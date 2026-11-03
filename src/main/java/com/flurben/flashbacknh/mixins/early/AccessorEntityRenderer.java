@@ -16,4 +16,10 @@ public interface AccessorEntityRenderer {
 
     @Accessor("fogColor2")
     void flashbacknh$setFogColor2(float value);
+
+    @Accessor("fovModifierHand")
+    void flashbacknh$setFovModifierHand(float value);
+
+    @Accessor("fovModifierHandPrev")
+    void flashbacknh$setFovModifierHandPrev(float value);
 }

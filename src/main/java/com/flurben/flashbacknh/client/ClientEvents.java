@@ -43,6 +43,7 @@ import com.flurben.flashbacknh.gui.GuiReplaySelect;
 import com.flurben.flashbacknh.recording.Recorder;
 import com.flurben.flashbacknh.recording.RecordingManager;
 import com.flurben.flashbacknh.replay.ReplayHandler;
+import com.flurben.flashbacknh.replay.net.SafePacket;
 import com.flurben.flashbacknh.util.Notifications;
 
 import cpw.mods.fml.client.event.ConfigChangedEvent;
@@ -128,6 +129,11 @@ public final class ClientEvents {
             return;
         }
         if (ReplayHandler.isReplaying()) {
+            // Angelica replaces the terrain loading screen on join/respawn with closing the current screen
+            if (gui == null && SafePacket.isProcessing()) {
+                event.setCanceled(true);
+                return;
+            }
             if (gui instanceof GuiIngameMenu) {
                 event.gui = new GuiReplayEditor();
             } else if (gui instanceof GuiDownloadTerrain || gui instanceof GuiSleepMP || gui instanceof GuiGameOver) {
