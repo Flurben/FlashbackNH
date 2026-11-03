@@ -5,6 +5,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 
@@ -145,7 +146,7 @@ public final class ClientEvents {
                 }
             return;
         }
-        if (gui instanceof GuiMainMenu && !recoveryShown) {
+        if (isMainMenu(gui) && !recoveryShown) {
             recoveryShown = true;
             if (!RecordingManager.INSTANCE.findRecoverable()
                 .isEmpty()) {
@@ -154,11 +155,49 @@ public final class ClientEvents {
         }
     }
 
+    /** GTNH replaces the main menu with Custom Main Menu's own screen. */
+    private static boolean isMainMenu(GuiScreen gui) {
+        return gui instanceof GuiMainMenu || (gui != null && "lumien.custommainmenu.gui.GuiCustom".equals(
+            gui.getClass()
+                .getName()));
+    }
+
+    /**
+     * Custom Main Menu shows other mods a fake main menu with a throwaway button list. The real screen is the current
+     * one and has a getter for the real list.
+     */
+    @SuppressWarnings("unchecked")
+    private List<GuiButton> mainMenuButtons(GuiScreenEvent.InitGuiEvent.Post event) {
+        try {
+            return (List<GuiButton>) mc.currentScreen.getClass()
+                .getMethod("getButtonList")
+                .invoke(mc.currentScreen);
+        } catch (ReflectiveOperationException e) {
+            return event.buttonList;
+        }
+    }
+
+    /** Opens the replay list by itself, because Custom Main Menu handles clicks without the Forge button event. */
+    private static final class ReplaysButton extends GuiButton {
+
+        ReplaysButton(int x, int y) {
+            super(BTN_REPLAYS, x, y, 70, 20, "Replays");
+        }
+
+        @Override
+        public boolean mousePressed(net.minecraft.client.Minecraft mc, int mouseX, int mouseY) {
+            if (!super.mousePressed(mc, mouseX, mouseY)) return false;
+            func_146113_a(mc.getSoundHandler());
+            mc.displayGuiScreen(new GuiReplaySelect(mc.currentScreen));
+            return false;
+        }
+    }
+
     @SubscribeEvent
     @SuppressWarnings("unchecked")
     public void onInitGui(GuiScreenEvent.InitGuiEvent.Post event) {
-        if (event.gui instanceof GuiMainMenu) {
-            event.buttonList.add(new GuiButton(BTN_REPLAYS, 4, 4, 70, 20, "Replays"));
+        if (isMainMenu(mc.currentScreen)) {
+            mainMenuButtons(event).add(new ReplaysButton(4, 4));
         } else if (event.gui instanceof GuiIngameMenu && Config.pauseMenuButtons && !ReplayHandler.isReplaying()) {
             int y = event.gui.height / 4 + 120 + 24 - 16 + 24;
             int cx = event.gui.width / 2;
@@ -177,9 +216,6 @@ public final class ClientEvents {
     public void onAction(GuiScreenEvent.ActionPerformedEvent.Pre event) {
         int id = event.button.id;
         switch (id) {
-            case BTN_REPLAYS:
-                mc.displayGuiScreen(new GuiReplaySelect(event.gui));
-                break;
             case BTN_RECORD:
                 mc.displayGuiScreen(null);
                 RecordingManager.INSTANCE.start();

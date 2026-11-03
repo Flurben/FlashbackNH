@@ -18,4 +18,6 @@ configurations.configureEach {
         }
     }
     exclude group: "com.github.GTNewHorizons", module: "GTNHExtLib"
+    // an old compile-time dependency of a mod GT5-Unofficial uses; this version is no longer published
+    exclude group: "com.github.GTNewHorizons", module: "CodeChickenLib"
 }

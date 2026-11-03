@@ -65,13 +65,50 @@ FlashbackNH never replaces any renderer. Everything visual goes through the norm
 - Entity hiding is applied at the entity render call, so it is consistent in shadow passes too.
 - The camera path preview is never drawn into exports.
 
-Tested combinations and known issues are tracked in the repository's issues. If something looks wrong with a specific
-shader pack, try a few "extra frames" in the export settings first.
+If something looks wrong with a specific shader pack, try a few "extra frames" in the export settings first.
+
+## What has been tested
+
+Everything below was run in the real game, driven by the test harness described under [Building](#building), with the
+results read from screenshots, exported files and logs.
+
+**Environments**
+
+- Forge dev client on Java 8, plain and with Angelica 1.0.0-beta66b and GT5-Unofficial 5.09.51.482.
+- The built jar in a copy of the GT New Horizons 2.8.4 pack (311 mods, lwjgl3ify) on Java 25, launched through Prism.
+- A local dedicated server (`runServer`, with GT5-Unofficial) for the server tests.
+- Shaders: Angelica with no pack and with Complementary Shaders 4.7.2.
+
+**Verified**
+
+- Recording: start, pause, unpause, finish and cancel from the pause menu, the save screen, markers, auto-start on join,
+  auto-finish on leaving, and recovery after killing the game mid-recording.
+- Server recording: from join and mid-session, including GT machines placed before and during the recording.
+- Dimension changes during a recording: playing and seeking across them, with the camera following the player.
+- Playback: the *Replays* button (also on the GTNH main menu), the recording player's skin, movement and animations,
+  entities, tile entities, play, pause, speed, seeking both ways, and spectating.
+- Exit: returns to the replay list and the main menu, and singleplayer and servers work normally afterwards, including
+  an existing GTNH world.
+- Editor: adding, moving, copying, pasting and deleting keyframes, in/out points, markers, the camera path following
+  keyframes, and the visuals panel (FOV, roll, time, weather, hidden entities, guides).
+- Export at 1920x1080 and 60 FPS: MP4 and PNG sequences with the expected frame counts, complete chunks and no editor
+  GUI or HUD, with and without shaders.
+- GregTech: machine hulls, basic machines, wires and pipes in replays and exports. Live and replayed views match under
+  shaders.
+- No crashes and no failed replay packets in the final runs.
+
+**Not tested**
+
+- Clicks with a real mouse and keyboard. The harness sends input to the screens directly, so holding the right mouse
+  button to fly and the Ctrl shortcuts themselves have not been exercised, although the actions behind them have.
+- Export formats other than MP4 and PNG, cancelling an export with ESC, and other shader packs.
+- Long recordings, large bases, public servers and other versions of the pack.
 
 ## Installation
 
 1. Install GT New Horizons (or any Forge 1.7.10 setup with [UniMixins](https://github.com/LegacyModdingMC/UniMixins)).
-2. Drop the FlashbackNH jar into your `mods` folder (client only).
+2. Drop the FlashbackNH jar into your `mods` folder (client only). Use `flashbacknh-<version>.jar`, not the `-dev` or
+   `-sources` jar.
 3. For video export, install [ffmpeg](https://ffmpeg.org/download.html) and make sure it is on your `PATH`, or set its
    full path as `ffmpegPath` in `config/flashbacknh.cfg` (also editable from the Mods menu). PNG export works without
    ffmpeg.
@@ -115,6 +152,10 @@ Minecraft 1.7.10 and Forge are very different from modern Fabric, so some things
 - Jumping backwards replays the recording from its start (packets are applied without rendering, so this is usually
   quick, but very long recordings take a few seconds). Forward jumps are always fast.
 - Replays are not compatible with Flashback's file format (the network protocol is completely different).
+- Standing in a nether portal closes any open screen in vanilla, including the save screen. The recording is not lost:
+  it can be recovered from the *Recover* button in the replay list.
+- Mod HUD elements such as the JourneyMap minimap and WAILA stay visible in the editor view. They do not appear in
+  exports.
 - Not (yet) implemented: combining replays, export queue, skin replacement, Simple Voice Chat/Bobby integration,
   depth-map/transparent-sky exports.
 
@@ -127,6 +168,12 @@ Requires JDK 25 for Gradle (the build targets Java 8 bytecode, like every GTNH m
 ./gradlew runClient      # dev client
 ./gradlew test           # unit tests
 ```
+
+`dependencies.gradle` pulls Angelica and GT5-Unofficial into the dev client, at the versions used by GTNH 2.8.4.
+
+`./gradlew runClient -PfbnhDev` enables a test harness (`dev/DevDriver`, inactive unless `-Dflashbacknh.dev=true` is set).
+It runs commands from `fbnh-dev/commands.txt` in the game directory and writes results and screenshots next to it, so
+the game can be tested without a person at the keyboard.
 
 ## License
 
