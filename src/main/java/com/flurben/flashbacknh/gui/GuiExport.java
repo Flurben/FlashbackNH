@@ -97,8 +97,9 @@ public class GuiExport extends GuiScreen {
         buttonList.add(new GuiButton(7, left + 160, y, 150, 20, "Extra frames: " + extraFrames));
         y += 24;
         String defName = s.filename != null ? s.filename : Config.exportFilename;
-        nameField = field(left + 70, y, 240, defName);
+        nameField = field(left + 70, y, 240, "");
         nameField.setMaxStringLength(200);
+        nameField.setText(defName);
         y += 30;
         buttonList.add(new GuiButton(0, cx - 155, y, 150, 20, "Start Export"));
         buttonList.add(new GuiButton(9, cx + 5, y, 150, 20, "Cancel"));

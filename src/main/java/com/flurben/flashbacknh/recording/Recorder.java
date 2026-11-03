@@ -29,6 +29,7 @@ import com.flurben.flashbacknh.format.ReplayFormat;
 import com.flurben.flashbacknh.format.ReplayMeta;
 import com.flurben.flashbacknh.mixins.early.AccessorNetworkManager;
 import com.flurben.flashbacknh.net.PacketCodec;
+import com.flurben.flashbacknh.util.Notifications;
 import com.flurben.flashbacknh.util.ServerTasks;
 import com.mojang.authlib.GameProfile;
 
@@ -60,7 +61,7 @@ public final class Recorder {
     private boolean finished;
     private long lastFlush;
     private long lastMetaSave;
-    private int pendingThumbnailTicks = 60;
+    private int pendingThumbnailTicks = 100; // after the "started recording" notification is gone
     private int failures;
 
     public Recorder(Minecraft mc, NetworkManager manager, boolean fromJoin, File recordingsRoot) throws IOException {
@@ -284,8 +285,9 @@ public final class Recorder {
             if (mc.theWorld != null && mc.thePlayer != null) {
                 try {
                     begin();
-                } catch (IOException e) {
+                } catch (Throwable e) {
                     FlashbackNH.LOG.error("Unable to start recording", e);
+                    Notifications.show("Flashback", "Unable to start recording: " + e);
                     RecordingManager.INSTANCE.cancel();
                 }
             }

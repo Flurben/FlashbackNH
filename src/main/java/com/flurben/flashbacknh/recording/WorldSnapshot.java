@@ -9,7 +9,6 @@ import java.util.List;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiPlayerInfo;
-import net.minecraft.client.multiplayer.ChunkProviderClient;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLiving;
@@ -48,10 +47,11 @@ import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.MathHelper;
 import net.minecraft.world.WorldSettings;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.EmptyChunk;
+import net.minecraft.world.chunk.IChunkProvider;
 
 import com.flurben.flashbacknh.FlashbackNH;
 import com.flurben.flashbacknh.format.ReplayFormat;
-import com.flurben.flashbacknh.mixins.early.AccessorChunkProviderClient;
 import com.flurben.flashbacknh.mixins.early.InvokerEntityTrackerEntry;
 import com.flurben.flashbacknh.net.PacketBuilder;
 import com.flurben.flashbacknh.net.PacketCodec;
@@ -61,6 +61,8 @@ import com.flurben.flashbacknh.net.PacketCodec;
  * in a world, and when a paused recording is resumed.
  */
 public final class WorldSnapshot {
+
+    private static final int CHUNK_SEARCH_RADIUS = 40;
 
     public static final class Rec {
 
@@ -157,8 +159,7 @@ public final class WorldSnapshot {
         packet(new S2BPacketChangeGameState(8, world.getWeightedThunderStrength(1.0F)));
 
         // Chunks
-        ChunkProviderClient provider = (ChunkProviderClient) world.getChunkProvider();
-        List<Chunk> chunks = new ArrayList<>(((AccessorChunkProviderClient) provider).flashbacknh$getChunkListing());
+        List<Chunk> chunks = loadedChunks(world, self);
         List<Chunk> batch = new ArrayList<>();
         for (Chunk chunk : chunks) {
             batch.add(chunk);
@@ -248,6 +249,25 @@ public final class WorldSnapshot {
         } catch (Throwable t) {
             FlashbackNH.LOG.debug("Snapshot: scoreboard failed", t);
         }
+    }
+
+    /**
+     * The chunks the client holds. ChunkProviderClient's chunk list cannot be used: Hodgepodge removes it. A server
+     * never
+     * sends chunks further from the player than its view distance, which is at most 32.
+     */
+    private static List<Chunk> loadedChunks(WorldClient world, Entity center) {
+        List<Chunk> chunks = new ArrayList<>();
+        int cx = MathHelper.floor_double(center.posX) >> 4;
+        int cz = MathHelper.floor_double(center.posZ) >> 4;
+        IChunkProvider provider = world.getChunkProvider();
+        for (int x = cx - CHUNK_SEARCH_RADIUS; x <= cx + CHUNK_SEARCH_RADIUS; x++) {
+            for (int z = cz - CHUNK_SEARCH_RADIUS; z <= cz + CHUNK_SEARCH_RADIUS; z++) {
+                Chunk chunk = provider.provideChunk(x, z);
+                if (chunk != null && !(chunk instanceof EmptyChunk)) chunks.add(chunk);
+            }
+        }
+        return chunks;
     }
 
     @SuppressWarnings("unchecked")

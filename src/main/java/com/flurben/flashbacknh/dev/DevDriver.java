@@ -424,6 +424,14 @@ public final class DevDriver {
             case "close":
                 mc.displayGuiScreen(null);
                 break;
+            case "invoke": {
+                // no-argument method of the current screen, for shortcuts that read the real modifier keys
+                Method m = s.getClass()
+                    .getDeclaredMethod(a[2]);
+                m.setAccessible(true);
+                m.invoke(s);
+                break;
+            }
             default:
                 throw new IllegalArgumentException(a[1]);
         }
@@ -565,6 +573,19 @@ public final class DevDriver {
                 + (mc.renderViewEntity == null ? null
                     : mc.renderViewEntity.getClass()
                         .getSimpleName()));
+        if (h != null) {
+            b.append(" kf=[");
+            for (TrackType t : TrackType.values()) {
+                StringBuilder ticks = new StringBuilder();
+                for (com.flurben.flashbacknh.editor.Keyframe k : h.editor.track(t).keyframes) ticks.append(k.tick)
+                    .append(',');
+                if (ticks.length() > 0) b.append(t)
+                    .append(':')
+                    .append(ticks)
+                    .append(' ');
+            }
+            b.append(']');
+        }
         b.append(" chunksComplete=")
             .append(mc.theWorld != null && ChunkWaiter.isComplete());
         return b.toString();

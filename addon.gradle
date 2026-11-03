@@ -8,3 +8,14 @@ if (project.hasProperty("fbnhDev")) {
         jvmArgs("-Dflashbacknh.dev=true")
     }
 }
+
+// Match the GTNHLib version of the GTNH 2.8.4 pack in the dev client, rather than the newest one some test dependency
+// asks for (which also pulls in GTNHExtLib, a jar the pack does not contain).
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == "com.github.GTNewHorizons" && details.requested.name == "GTNHLib") {
+            details.useVersion("0.7.10")
+        }
+    }
+    exclude group: "com.github.GTNewHorizons", module: "GTNHExtLib"
+}
