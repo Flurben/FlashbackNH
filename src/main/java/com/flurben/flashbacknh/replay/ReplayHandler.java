@@ -13,9 +13,9 @@ import java.util.Map;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityOtherPlayerMP;
+import net.minecraft.client.gui.GuiDownloadTerrain;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.multiplayer.ChunkProviderClient;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -26,7 +26,7 @@ import net.minecraft.network.Packet;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.Timer;
-import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.WorldSettings;
 
 import org.apache.commons.io.FileUtils;
 
@@ -42,9 +42,10 @@ import com.flurben.flashbacknh.format.ReplayMeta;
 import com.flurben.flashbacknh.format.ReplayStream;
 import com.flurben.flashbacknh.gui.GuiReplayEditor;
 import com.flurben.flashbacknh.gui.GuiReplaySelect;
-import com.flurben.flashbacknh.mixins.early.AccessorChunkProviderClient;
 import com.flurben.flashbacknh.mixins.early.AccessorEntityLivingBase;
 import com.flurben.flashbacknh.mixins.early.AccessorEntityOtherPlayerMP;
+import com.flurben.flashbacknh.mixins.early.AccessorEntityRenderer;
+import com.flurben.flashbacknh.mixins.early.AccessorNetHandlerPlayClient;
 import com.flurben.flashbacknh.net.PacketCodec;
 import com.flurben.flashbacknh.recording.HotbarState;
 import com.flurben.flashbacknh.recording.RecordingManager;
@@ -128,8 +129,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
     public final CameraController cameraController = new CameraController();
 
-    private ReplayHandler(File archive, ReplayMeta meta, File streamFile, ReplayStream stream, RegistrySnapshot registry,
-        EditorState editor) {
+    private ReplayHandler(File archive, ReplayMeta meta, File streamFile, ReplayStream stream,
+        RegistrySnapshot registry, EditorState editor) {
         this.archive = archive;
         this.meta = meta;
         this.streamFile = streamFile;
@@ -166,14 +167,19 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
         EditorState editor;
         byte[] ed = ReplayArchive.readEntry(archive, ReplayFormat.ENTRY_EDITOR);
-        editor = ed != null ? EditorState.fromJson(new String(ed, StandardCharsets.UTF_8)) : EditorState.createDefault();
+        editor = ed != null ? EditorState.fromJson(new String(ed, StandardCharsets.UTF_8))
+            : EditorState.createDefault();
 
         ReplayHandler handler = new ReplayHandler(archive, meta, streamFile, stream, registry, editor);
         if (registry != null) {
             List<String> missing = registry.inject();
             if (missing != null && !missing.isEmpty()) {
-                FlashbackNH.LOG.warn("Replay references {} blocks/items that are not installed: {}", missing.size(), missing);
-                Notifications.show("Registry mismatch", missing.size() + " missing blocks/items, the replay may look wrong", 8000);
+                FlashbackNH.LOG
+                    .warn("Replay references {} blocks/items that are not installed: {}", missing.size(), missing);
+                Notifications.show(
+                    "Registry mismatch",
+                    missing.size() + " missing blocks/items, the replay may look wrong",
+                    8000);
             }
         }
         active = handler;
@@ -263,7 +269,16 @@ public final class ReplayHandler implements PacketFilter.Listener {
         if (camera == null) return;
         Entity local = localPlayerId != Integer.MIN_VALUE ? mc.theWorld.getEntityByID(localPlayerId) : null;
         if (local != null) {
-            camera.setCameraPosition(local.posX, local.boundingBox.minY + eyeHeight(local), local.posZ, local.rotationYaw, local.rotationPitch);
+            // a little behind the recording player, looking the same way, rather than inside their head
+            double yaw = Math.toRadians(local.rotationYaw);
+            double pitch = Math.toRadians(local.rotationPitch);
+            double back = 3.0D;
+            camera.setCameraPosition(
+                local.posX + Math.sin(yaw) * Math.cos(pitch) * back,
+                local.boundingBox.minY + eyeHeight(local) + Math.sin(pitch) * back,
+                local.posZ - Math.cos(yaw) * Math.cos(pitch) * back,
+                local.rotationYaw,
+                local.rotationPitch);
         } else if (pendingCameraPos != null) {
             camera.setCameraPosition(
                 pendingCameraPos[0],
@@ -384,7 +399,12 @@ public final class ReplayHandler implements PacketFilter.Listener {
             Entity e = mc.renderViewEntity;
             CameraEntity camera = getCamera();
             if (camera != null && e != null && e != camera) {
-                camera.setCameraPosition(e.posX, e.posY - e.yOffset + eyeHeight(e), e.posZ, e.rotationYaw, e.rotationPitch);
+                camera.setCameraPosition(
+                    e.posX,
+                    e.posY - e.yOffset + eyeHeight(e),
+                    e.posZ,
+                    e.rotationYaw,
+                    e.rotationPitch);
             }
         }
         spectatingId = Integer.MIN_VALUE;
@@ -475,7 +495,10 @@ public final class ReplayHandler implements PacketFilter.Listener {
                 } else if (e instanceof EntityLivingBase) {
                     AccessorEntityLivingBase acc = (AccessorEntityLivingBase) e;
                     if (acc.flashbacknh$getNewPosRotationIncrements() > 0) {
-                        e.setPosition(acc.flashbacknh$getNewPosX(), acc.flashbacknh$getNewPosY(), acc.flashbacknh$getNewPosZ());
+                        e.setPosition(
+                            acc.flashbacknh$getNewPosX(),
+                            acc.flashbacknh$getNewPosY(),
+                            acc.flashbacknh$getNewPosZ());
                         e.rotationYaw = (float) acc.flashbacknh$getNewRotationYaw();
                         e.rotationPitch = (float) acc.flashbacknh$getNewRotationPitch();
                         acc.flashbacknh$setNewPosRotationIncrements(0);
@@ -515,7 +538,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
                 try {
                     packet = PacketCodec.decode(data);
                 } catch (Throwable t) {
-                    if (decodeFailures++ < 20) FlashbackNH.LOG.warn("Unable to decode recorded packet 0x{}", Integer.toHexString(id), t);
+                    if (decodeFailures++ < 20)
+                        FlashbackNH.LOG.warn("Unable to decode recorded packet 0x{}", Integer.toHexString(id), t);
                     return;
                 }
                 connection.deliver(packet);
@@ -612,18 +636,34 @@ public final class ReplayHandler implements PacketFilter.Listener {
         }
     }
 
+    /**
+     * Resets the client world, the way a dimension change does. Chunks and entities cannot be cleared in place: their
+     * removal only takes effect on the next tick, after the snapshot that follows this record re-added them.
+     */
     private void clearWorld() {
-        WorldClient world = mc.theWorld;
-        if (world == null) return;
-        for (Object o : new ArrayList<>(world.loadedEntityList)) {
-            Entity e = (Entity) o;
-            if (e == mc.thePlayer) continue;
-            world.removeEntityFromWorld(e.getEntityId());
-        }
-        ChunkProviderClient provider = (ChunkProviderClient) world.getChunkProvider();
-        for (Chunk c : new ArrayList<>(((AccessorChunkProviderClient) provider).flashbacknh$getChunkListing())) {
-            world.doPreChunk(c.xPosition, c.zPosition, false);
-        }
+        WorldClient old = mc.theWorld;
+        if (old == null || mc.thePlayer == null) return;
+        if (mc.thePlayer instanceof CameraEntity) ((CameraEntity) mc.thePlayer).remember();
+        int dimension = mc.thePlayer.dimension;
+        WorldClient fresh = new WorldClient(
+            connection.handler,
+            new WorldSettings(
+                0L,
+                WorldSettings.GameType.CREATIVE,
+                false,
+                old.getWorldInfo()
+                    .isHardcoreModeEnabled(),
+                old.getWorldInfo()
+                    .getTerrainType()),
+            dimension,
+            old.difficultySetting,
+            mc.mcProfiler);
+        fresh.isRemote = true;
+        ((AccessorNetHandlerPlayClient) connection.handler).flashbacknh$setClientWorld(fresh);
+        mc.loadWorld(fresh);
+        mc.thePlayer.dimension = dimension;
+        mc.setDimensionAndSpawnPlayer(dimension);
+        if (mc.currentScreen instanceof GuiDownloadTerrain) mc.displayGuiScreen(new GuiReplayEditor());
     }
 
     private static int readInt(byte[] d, int o) {
@@ -805,6 +845,27 @@ public final class ReplayHandler implements PacketFilter.Listener {
         }
 
         VisualsApplier.apply(editor.visuals, clockDriver != null);
+        updateFrozenRendererState(camera);
+    }
+
+    /**
+     * EntityRenderer.updateRenderer is the only thing that invalidates the lightmap and moves the fog brightness, and
+     * it does not run on frozen ticks. Without this the world renders black until the replay first plays, and time of
+     * day overrides have no effect while paused.
+     */
+    private void updateFrozenRendererState(CameraEntity camera) {
+        AccessorEntityRenderer renderer = (AccessorEntityRenderer) mc.entityRenderer;
+        renderer.flashbacknh$setLightmapUpdateNeeded(true);
+        if (!paused || clockDriver != null) return;
+        Entity view = mc.renderViewEntity != null ? mc.renderViewEntity : camera;
+        float light = mc.theWorld.getLightBrightness(
+            MathHelper.floor_double(view.posX),
+            MathHelper.floor_double(view.posY),
+            MathHelper.floor_double(view.posZ));
+        float distance = mc.gameSettings.renderDistanceChunks / 16.0F;
+        float fog = light * (1.0F - distance) + distance;
+        renderer.flashbacknh$setFogColor1(fog);
+        renderer.flashbacknh$setFogColor2(fog);
     }
 
     /** True if the entity should not be rendered (render filter / hidden entities). */

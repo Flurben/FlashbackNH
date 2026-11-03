@@ -26,8 +26,12 @@ public final class PngSequenceEncoder implements FrameEncoder {
     public PngSequenceEncoder(File dir) throws IOException {
         this.dir = dir;
         if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Unable to create " + dir);
-        int threads = Math.max(1, Math.min(4, Runtime.getRuntime()
-            .availableProcessors() / 2));
+        int threads = Math.max(
+            1,
+            Math.min(
+                4,
+                Runtime.getRuntime()
+                    .availableProcessors() / 2));
         this.pool = new ThreadPoolExecutor(threads, threads, 1, TimeUnit.MINUTES, new LinkedBlockingQueue<>(), r -> {
             Thread t = new Thread(r, "FlashbackNH PNG writer");
             t.setDaemon(true);

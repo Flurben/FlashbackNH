@@ -43,7 +43,8 @@ public final class HudRenderer {
         ReplayHandler h = ReplayHandler.get();
         Minecraft mc = Minecraft.getMinecraft();
         if (h == null || !h.editor.visuals.showRecordedHotbar || mc.gameSettings.thirdPersonView != 0) return;
-        if (!h.isSpectating() || mc.renderViewEntity == null || mc.renderViewEntity.getEntityId() != h.getLocalPlayerId()) return;
+        if (!h.isSpectating() || mc.renderViewEntity == null
+            || mc.renderViewEntity.getEntityId() != h.getLocalPlayerId()) return;
         HotbarState s = h.getHotbar();
         if (s == null) return;
         int w = res.getScaledWidth(), height = res.getScaledHeight();

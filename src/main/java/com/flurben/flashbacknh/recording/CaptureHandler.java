@@ -69,10 +69,9 @@ public abstract class CaptureHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             try {
-                if (msg instanceof ByteBuf
-                    && ctx.channel()
-                        .attr(NetworkManager.attrKeyConnectionState)
-                        .get() == EnumConnectionState.PLAY) {
+                if (msg instanceof ByteBuf && ctx.channel()
+                    .attr(NetworkManager.attrKeyConnectionState)
+                    .get() == EnumConnectionState.PLAY) {
                     ByteBuf buf = (ByteBuf) msg;
                     int len = buf.readableBytes();
                     if (len > 0) {

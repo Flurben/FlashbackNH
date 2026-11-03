@@ -79,8 +79,11 @@ public final class Config {
             CAT_RECORDING,
             quicksave,
             "Save recordings with default values instead of opening the Save Replay screen.");
-        showRecordingToasts = c
-            .getBoolean("showRecordingToasts", CAT_RECORDING, showRecordingToasts, "Show a notification when starting/stopping a recording.");
+        showRecordingToasts = c.getBoolean(
+            "showRecordingToasts",
+            CAT_RECORDING,
+            showRecordingToasts,
+            "Show a notification when starting/stopping a recording.");
         markDimensionChanges = c.getBoolean(
             "markDimensionChanges",
             CAT_RECORDING,
@@ -96,13 +99,30 @@ public final class Config {
             CAT_RECORDING,
             showRecordingIndicator,
             "Show a small REC indicator in the top-left corner while recording.");
-        pauseMenuButtons = c
-            .getBoolean("pauseMenuButtons", CAT_RECORDING, pauseMenuButtons, "Add recording controls to the pause menu.");
+        pauseMenuButtons = c.getBoolean(
+            "pauseMenuButtons",
+            CAT_RECORDING,
+            pauseMenuButtons,
+            "Add recording controls to the pause menu.");
 
         c.setCategoryComment(CAT_REPLAY, "Replay viewer / editor settings");
-        cameraBaseSpeed = c.getFloat("cameraBaseSpeed", CAT_REPLAY, cameraBaseSpeed, 0.1f, 500f, "Default free camera speed in blocks per second.");
-        cameraMomentum = c.getBoolean("cameraMomentum", CAT_REPLAY, cameraMomentum, "Smoothly accelerate/decelerate the free camera.");
-        showCameraPath = c.getBoolean("showCameraPath", CAT_REPLAY, showCameraPath, "Render the camera keyframe path in the world while editing (never visible in exports).");
+        cameraBaseSpeed = c.getFloat(
+            "cameraBaseSpeed",
+            CAT_REPLAY,
+            cameraBaseSpeed,
+            0.1f,
+            500f,
+            "Default free camera speed in blocks per second.");
+        cameraMomentum = c.getBoolean(
+            "cameraMomentum",
+            CAT_REPLAY,
+            cameraMomentum,
+            "Smoothly accelerate/decelerate the free camera.");
+        showCameraPath = c.getBoolean(
+            "showCameraPath",
+            CAT_REPLAY,
+            showCameraPath,
+            "Render the camera keyframe path in the world while editing (never visible in exports).");
         showTips = c.getBoolean("showTips", CAT_REPLAY, showTips, "Show a usage tip when opening a replay.");
         defaultInterpolation = c.getString(
             "defaultInterpolation",
@@ -110,7 +130,13 @@ public final class Config {
             defaultInterpolation,
             "Interpolation used for new keyframes.",
             new String[] { "SMOOTH", "LINEAR", "EASE_IN_OUT", "HOLD" });
-        skipSeconds = c.getInt("skipSeconds", CAT_REPLAY, skipSeconds, 1, 600, "Seconds skipped by the skip forwards/backwards buttons.");
+        skipSeconds = c.getInt(
+            "skipSeconds",
+            CAT_REPLAY,
+            skipSeconds,
+            1,
+            600,
+            "Seconds skipped by the skip forwards/backwards buttons.");
 
         c.setCategoryComment(CAT_EXPORT, "Video export settings");
         ffmpegPath = c.getString(
@@ -121,7 +147,8 @@ public final class Config {
         exportWidth = c.getInt("width", CAT_EXPORT, exportWidth, 16, 16384, "Default export width.");
         exportHeight = c.getInt("height", CAT_EXPORT, exportHeight, 16, 16384, "Default export height.");
         exportFps = c.getInt("fps", CAT_EXPORT, exportFps, 1, 1000, "Default export framerate.");
-        exportCrf = c.getInt("crf", CAT_EXPORT, exportCrf, 0, 63, "Default constant rate factor (quality, lower is better).");
+        exportCrf = c
+            .getInt("crf", CAT_EXPORT, exportCrf, 0, 63, "Default constant rate factor (quality, lower is better).");
         exportFormat = c.getString(
             "format",
             CAT_EXPORT,

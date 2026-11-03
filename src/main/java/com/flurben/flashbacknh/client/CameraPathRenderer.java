@@ -19,7 +19,8 @@ public final class CameraPathRenderer {
 
     public static void render(float partialTicks) {
         ReplayHandler h = ReplayHandler.get();
-        if (h == null || Exporter.isExporting() || !h.editor.visuals.showCameraPath || GuiReplayEditor.isUiHidden()) return;
+        if (h == null || Exporter.isExporting() || !h.editor.visuals.showCameraPath || GuiReplayEditor.isUiHidden())
+            return;
         KeyframeTrack track = h.editor.track(TrackType.CAMERA);
         if (track.keyframes.isEmpty()) return;
         double cx = RenderManager.renderPosX, cy = RenderManager.renderPosY, cz = RenderManager.renderPosZ;
@@ -66,7 +67,8 @@ public final class CameraPathRenderer {
                 t.addVertex(x, y, z - s);
                 t.addVertex(x, y, z + s);
                 double yaw = Math.toRadians(k.values[3]), pitch = Math.toRadians(k.values[4]);
-                double dx = -Math.sin(yaw) * Math.cos(pitch), dy = -Math.sin(pitch), dz = Math.cos(yaw) * Math.cos(pitch);
+                double dx = -Math.sin(yaw) * Math.cos(pitch), dy = -Math.sin(pitch),
+                    dz = Math.cos(yaw) * Math.cos(pitch);
                 t.setColorRGBA_F(1f, 0.8f, 0.3f, alpha);
                 t.addVertex(x, y, z);
                 t.addVertex(x + dx * 0.8, y + dy * 0.8, z + dz * 0.8);

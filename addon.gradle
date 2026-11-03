@@ -1,3 +1,10 @@
 tasks.named("test", Test) {
     useJUnitPlatform()
 }
+
+// Test harness (see dev/DevDriver): gradlew runClient -PfbnhDev
+if (project.hasProperty("fbnhDev")) {
+    tasks.matching { it.name.startsWith("runClient") || it.name.startsWith("runObfClient") }.configureEach {
+        jvmArgs("-Dflashbacknh.dev=true")
+    }
+}

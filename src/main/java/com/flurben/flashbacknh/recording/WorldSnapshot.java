@@ -84,8 +84,8 @@ public final class WorldSnapshot {
     }
 
     /**
-     * @param initial  true for the first snapshot of a recording (starts with a join game packet)
-     * @param lastDim  dimension of the previous snapshot/recorded state; a respawn packet is added if it changed
+     * @param initial true for the first snapshot of a recording (starts with a join game packet)
+     * @param lastDim dimension of the previous snapshot/recorded state; a respawn packet is added if it changed
      */
     public static WorldSnapshot create(Minecraft mc, boolean initial, Integer lastDim) {
         WorldSnapshot s = new WorldSnapshot(mc);
@@ -269,7 +269,9 @@ public final class WorldSnapshot {
             packet(spawn);
             if (!e.getDataWatcher()
                 .getIsBlank()) {
-                raw(ReplayFormat.REC_PACKET, PacketBuilder.entityMetadata(id, PacketBuilder.copyWatched(e.getDataWatcher(), -1)));
+                raw(
+                    ReplayFormat.REC_PACKET,
+                    PacketBuilder.entityMetadata(id, PacketBuilder.copyWatched(e.getDataWatcher(), -1)));
             }
             if (!(e instanceof EntityLivingBase)) {
                 packet(new S12PacketEntityVelocity(id, e.motionX, e.motionY, e.motionZ));
@@ -277,9 +279,12 @@ public final class WorldSnapshot {
         }
         if (e instanceof EntityLivingBase) {
             EntityLivingBase living = (EntityLivingBase) e;
-            packet(new S19PacketEntityHeadLook(e, (byte) MathHelper.floor_float(living.getRotationYawHead() * 256.0F / 360.0F)));
+            packet(
+                new S19PacketEntityHeadLook(
+                    e,
+                    (byte) MathHelper.floor_float(living.getRotationYawHead() * 256.0F / 360.0F)));
             try {
-                Collection<?> attributes = living.getAttributeMap()
+                Collection<net.minecraft.entity.ai.attributes.IAttributeInstance> attributes = living.getAttributeMap()
                     .getAllAttributes();
                 if (!attributes.isEmpty()) packet(new S20PacketEntityProperties(id, attributes));
             } catch (Throwable ignored) {}
@@ -292,7 +297,12 @@ public final class WorldSnapshot {
             }
         }
         if (e instanceof EntityPlayer && ((EntityPlayer) e).isPlayerSleeping()) {
-            packet(new S0APacketUseBed((EntityPlayer) e, MathHelper.floor_double(e.posX), MathHelper.floor_double(e.posY), MathHelper.floor_double(e.posZ)));
+            packet(
+                new S0APacketUseBed(
+                    (EntityPlayer) e,
+                    MathHelper.floor_double(e.posX),
+                    MathHelper.floor_double(e.posY),
+                    MathHelper.floor_double(e.posZ)));
         }
     }
 }

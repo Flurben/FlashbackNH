@@ -49,11 +49,14 @@ public class GuiSaveReplay extends GuiScreen implements GuiYesNoCallback {
     }
 
     private void save() {
-        RecordingManager.saveAsync(workDir, meta, nameField.getText()
-            .trim()
-            .isEmpty() ? RecordingManager.defaultName(meta)
-                : nameField.getText()
-                    .trim());
+        RecordingManager.saveAsync(
+            workDir,
+            meta,
+            nameField.getText()
+                .trim()
+                .isEmpty() ? RecordingManager.defaultName(meta)
+                    : nameField.getText()
+                        .trim());
         mc.displayGuiScreen(parent);
         if (parent == null && mc.theWorld != null) mc.setIngameFocus();
     }
@@ -61,7 +64,8 @@ public class GuiSaveReplay extends GuiScreen implements GuiYesNoCallback {
     @Override
     protected void actionPerformed(GuiButton b) {
         if (b.id == 0) save();
-        else mc.displayGuiScreen(new GuiYesNo(this, "Delete this recording?", "You won't be able to recover it", "Delete", "Cancel", 0));
+        else mc.displayGuiScreen(
+            new GuiYesNo(this, "Delete this recording?", "You won't be able to recover it", "Delete", "Cancel", 0));
     }
 
     @Override

@@ -44,6 +44,9 @@ public final class ReplayConnection {
             channel.pipeline()
                 .fireChannelActive();
         }
+        // setConnectionState remembers the previous state and processReceivedPackets reports a difference to the net
+        // handler, which NetHandlerPlayClient rejects. Setting it twice leaves no pending transition.
+        manager.setConnectionState(EnumConnectionState.PLAY);
         manager.setConnectionState(EnumConnectionState.PLAY);
         this.dispatcher = new ReplayDispatcher(manager);
         channel.attr(NetworkDispatcher.FML_DISPATCHER)
@@ -116,11 +119,11 @@ public final class ReplayConnection {
                     FMLProxyPacket proxy = new FMLProxyPacket(payload);
                     proxy.setDispatcher(connection.dispatcher);
                     proxy.setTarget(Side.CLIENT);
-                    ctx.fireChannelRead(new SafeProxyPacket(proxy));
+                    ctx.fireChannelRead(new SafePacket(proxy));
                     return;
                 }
             }
-            ctx.fireChannelRead(msg);
+            ctx.fireChannelRead(msg instanceof Packet ? new SafePacket((Packet) msg) : msg);
         }
     }
 

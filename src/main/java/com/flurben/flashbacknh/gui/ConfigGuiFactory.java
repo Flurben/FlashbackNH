@@ -22,7 +22,8 @@ public class ConfigGuiFactory implements IModGuiFactory {
     public static List<IConfigElement> elements() {
         List<IConfigElement> list = new ArrayList<>();
         if (Config.config == null) return list;
-        for (String cat : new String[] { Config.CAT_RECORDING, Config.CAT_REPLAY, Config.CAT_EXPORT, Config.CAT_ADVANCED }) {
+        for (String cat : new String[] { Config.CAT_RECORDING, Config.CAT_REPLAY, Config.CAT_EXPORT,
+            Config.CAT_ADVANCED }) {
             list.add(new ConfigElement(Config.config.getCategory(cat)));
         }
         return list;

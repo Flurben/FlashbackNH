@@ -21,7 +21,12 @@ class KeyframeTrackTest {
 
     @Test
     void linearInterpolatesAndClamps() {
-        KeyframeTrack t = track(TrackType.FOV, Interpolation.LINEAR, new int[] { 0, 100 }, new double[] { 70 }, new double[] { 90 });
+        KeyframeTrack t = track(
+            TrackType.FOV,
+            Interpolation.LINEAR,
+            new int[] { 0, 100 },
+            new double[] { 70 },
+            new double[] { 90 });
         assertEquals(70, t.evaluate(-5)[0], 1e-9);
         assertEquals(80, t.evaluate(50)[0], 1e-9);
         assertEquals(90, t.evaluate(500)[0], 1e-9);
@@ -29,7 +34,12 @@ class KeyframeTrackTest {
 
     @Test
     void holdKeepsLeftValue() {
-        KeyframeTrack t = track(TrackType.FOV, Interpolation.HOLD, new int[] { 0, 100 }, new double[] { 70 }, new double[] { 90 });
+        KeyframeTrack t = track(
+            TrackType.FOV,
+            Interpolation.HOLD,
+            new int[] { 0, 100 },
+            new double[] { 70 },
+            new double[] { 90 });
         assertEquals(70, t.evaluate(99.9)[0], 1e-9);
         assertEquals(90, t.evaluate(100)[0], 1e-9);
     }

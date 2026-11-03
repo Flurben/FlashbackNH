@@ -215,7 +215,8 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         if (OpenGlHelper.isFramebufferEnabled()) {
             fb.bindFramebuffer(false);
             if (fb.framebufferWidth != w || fb.framebufferHeight != h) {
-                throw new IOException("Framebuffer is " + fb.framebufferWidth + "x" + fb.framebufferHeight + ", expected " + w + "x" + h);
+                throw new IOException(
+                    "Framebuffer is " + fb.framebufferWidth + "x" + fb.framebufferHeight + ", expected " + w + "x" + h);
             }
         } else {
             GL11.glReadBuffer(GL11.GL_BACK);
@@ -246,7 +247,11 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         GL11.glDisable(GL11.GL_FOG);
 
         int sw = res.getScaledWidth();
-        String line1 = String.format("Exporting %d / %d frames (%.1f%%)", framesWritten, totalFrames, framesWritten * 100.0 / Math.max(1, totalFrames));
+        String line1 = String.format(
+            "Exporting %d / %d frames (%.1f%%)",
+            framesWritten,
+            totalFrames,
+            framesWritten * 100.0 / Math.max(1, totalFrames));
         long elapsed = System.currentTimeMillis() - startedAt;
         String eta = framesWritten > 0
             ? formatMs((long) ((double) elapsed / framesWritten * (totalFrames - framesWritten)))
@@ -257,7 +262,12 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         Gui.drawRect(x, y, x + boxW, y + 36, 0xD0101014);
         int barW = boxW - 16;
         Gui.drawRect(x + 8, y + 26, x + 8 + barW, y + 30, 0xFF303040);
-        Gui.drawRect(x + 8, y + 26, x + 8 + (int) (barW * framesWritten / (double) Math.max(1, totalFrames)), y + 30, 0xFF4F8FE0);
+        Gui.drawRect(
+            x + 8,
+            y + 26,
+            x + 8 + (int) (barW * framesWritten / (double) Math.max(1, totalFrames)),
+            y + 30,
+            0xFF4F8FE0);
         mc.fontRenderer.drawStringWithShadow(line1, x + 8, y + 4, 0xFFFFFF);
         mc.fontRenderer.drawStringWithShadow(line2, x + 8, y + 15, 0xAAAAAA);
 
@@ -308,10 +318,11 @@ public final class Exporter implements ReplayHandler.ClockDriver {
                         .setUnderlined(true)
                         .setChatClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, out.getAbsolutePath())));
                 msg.appendSibling(link);
-                mc.func_152344_a(() -> {
-                    if (mc.ingameGUI != null) mc.ingameGUI.getChatGUI()
-                        .printChatMessage(msg);
-                });
+                mc.func_152344_a(
+                    () -> {
+                        if (mc.ingameGUI != null) mc.ingameGUI.getChatGUI()
+                            .printChatMessage(msg);
+                    });
             } catch (Throwable e) {
                 FlashbackNH.LOG.error("Export failed while finishing", e);
                 Notifications.show("Export failed", String.valueOf(e.getMessage()), 10000);

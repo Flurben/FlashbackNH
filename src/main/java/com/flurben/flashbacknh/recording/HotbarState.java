@@ -32,8 +32,9 @@ public final class HotbarState {
             out.writeByte(p.inventory.currentItem);
             out.writeFloat(p.getHealth());
             out.writeFloat(p.getMaxHealth());
-            out.writeInt(p.getFoodStats()
-                .getFoodLevel());
+            out.writeInt(
+                p.getFoodStats()
+                    .getFoodLevel());
             out.writeInt(p.getTotalArmorValue());
             out.writeInt(p.getAir());
             out.writeInt(p.experienceLevel);

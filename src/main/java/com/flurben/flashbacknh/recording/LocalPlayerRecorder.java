@@ -249,8 +249,9 @@ public final class LocalPlayerRecorder {
     }
 
     private static int stackHash(ItemStack s) {
-        int h = s.getItem() == null ? 0 : s.getItem()
-            .hashCode();
+        int h = s.getItem() == null ? 0
+            : s.getItem()
+                .hashCode();
         h = h * 31 + s.stackSize;
         h = h * 31 + s.getItemDamage();
         h = h * 31 + (s.getTagCompound() == null ? 0

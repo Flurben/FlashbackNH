@@ -24,8 +24,9 @@ public enum Interpolation {
     public static Interpolation parse(String s, Interpolation def) {
         if (s == null) return def;
         try {
-            return valueOf(s.trim()
-                .toUpperCase());
+            return valueOf(
+                s.trim()
+                    .toUpperCase());
         } catch (IllegalArgumentException e) {
             return def;
         }

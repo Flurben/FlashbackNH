@@ -16,7 +16,8 @@ import com.flurben.flashbacknh.replay.ReplayHandler;
 public class MixinGuiIngame {
 
     @Inject(method = "func_96136_a", at = @At("HEAD"), cancellable = true)
-    private void flashbacknh$scoreboard(ScoreObjective objective, int height, int width, FontRenderer font, CallbackInfo ci) {
+    private void flashbacknh$scoreboard(ScoreObjective objective, int height, int width, FontRenderer font,
+        CallbackInfo ci) {
         if (ReplayHandler.isReplaying() && !ReplayHandler.visuals().showScoreboard) ci.cancel();
     }
 }

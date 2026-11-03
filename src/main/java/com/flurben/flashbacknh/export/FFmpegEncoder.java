@@ -54,8 +54,8 @@ public final class FFmpegEncoder implements FrameEncoder {
     private volatile String error;
     private byte[] scratch;
 
-    public FFmpegEncoder(String ffmpeg, Format format, File output, int width, int height, int fps, int crf, String preset)
-        throws IOException {
+    public FFmpegEncoder(String ffmpeg, Format format, File output, int width, int height, int fps, int crf,
+        String preset) throws IOException {
         this.output = output;
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpeg);
@@ -100,7 +100,8 @@ public final class FFmpegEncoder implements FrameEncoder {
                 break;
             case GIF:
                 cmd.add("-vf");
-                cmd.add("vflip,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3");
+                cmd.add(
+                    "vflip,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3");
                 cmd.add("-loop");
                 cmd.add("0");
                 break;
@@ -128,10 +129,13 @@ public final class FFmpegEncoder implements FrameEncoder {
         try {
             this.process = pb.start();
         } catch (IOException e) {
-            throw new IOException("Unable to start ffmpeg ('" + ffmpeg + "'). Install ffmpeg or set its path in the FlashbackNH config.", e);
+            throw new IOException(
+                "Unable to start ffmpeg ('" + ffmpeg + "'). Install ffmpeg or set its path in the FlashbackNH config.",
+                e);
         }
         Thread logReader = new Thread(() -> {
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            try (BufferedReader r = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = r.readLine()) != null) {
                     FlashbackNH.LOG.info("[ffmpeg] {}", line);
@@ -230,7 +234,8 @@ public final class FFmpegEncoder implements FrameEncoder {
         try {
             Process p = new ProcessBuilder(ffmpeg, "-version").redirectErrorStream(true)
                 .start();
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            try (BufferedReader r = new BufferedReader(
+                new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String first = r.readLine();
                 while (r.readLine() != null) {
                     // drain

@@ -67,7 +67,10 @@ public final class Recorder {
         this.mc = mc;
         this.manager = manager;
         this.fromJoin = fromJoin;
-        this.workDir = new File(recordingsRoot, UUID.randomUUID().toString());
+        this.workDir = new File(
+            recordingsRoot,
+            UUID.randomUUID()
+                .toString());
         if (!workDir.mkdirs()) throw new IOException("Unable to create " + workDir);
         this.writer = new RecordWriter(new File(workDir, WORK_STREAM), false);
         GameProfile profile = mc.getSession()

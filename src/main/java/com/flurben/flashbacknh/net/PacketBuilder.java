@@ -27,8 +27,8 @@ public final class PacketBuilder {
     private PacketBuilder() {}
 
     /** S0CPacketSpawnPlayer with an explicit profile (so skins work for anybody viewing the replay). */
-    public static byte[] spawnPlayer(EntityPlayer player, GameProfile profile, List<DataWatcher.WatchableObject> watched)
-        throws IOException {
+    public static byte[] spawnPlayer(EntityPlayer player, GameProfile profile,
+        List<DataWatcher.WatchableObject> watched) throws IOException {
         ByteBuf raw = Unpooled.buffer(256);
         try {
             PacketBuffer buf = new PacketBuffer(raw);

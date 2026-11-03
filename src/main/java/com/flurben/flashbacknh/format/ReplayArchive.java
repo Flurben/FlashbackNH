@@ -25,11 +25,15 @@ public final class ReplayArchive {
     /**
      * Writes a complete archive. {@code extraEntries} values may be byte arrays or Files.
      */
-    public static void write(File target, ReplayMeta meta, File stream, Map<String, Object> extraEntries) throws IOException {
+    public static void write(File target, ReplayMeta meta, File stream, Map<String, Object> extraEntries)
+        throws IOException {
         File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
         try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(tmp), 1 << 16))) {
-            putBytes(zos, ReplayFormat.ENTRY_META, meta.toJson()
-                .getBytes(StandardCharsets.UTF_8));
+            putBytes(
+                zos,
+                ReplayFormat.ENTRY_META,
+                meta.toJson()
+                    .getBytes(StandardCharsets.UTF_8));
             if (stream != null) putFile(zos, ReplayFormat.ENTRY_STREAM, stream);
             if (extraEntries != null) {
                 for (Map.Entry<String, Object> e : extraEntries.entrySet()) {

@@ -4,7 +4,8 @@ package com.flurben.flashbacknh.editor;
 public enum TrackType {
 
     /** x, y, z, yaw, pitch, roll */
-    CAMERA("Camera", 0xFF4FA3E0, new String[] { "X", "Y", "Z", "Yaw", "Pitch", "Roll" }, new boolean[] { false, false, false, true, true, true }),
+    CAMERA("Camera", 0xFF4FA3E0, new String[] { "X", "Y", "Z", "Yaw", "Pitch", "Roll" },
+        new boolean[] { false, false, false, true, true, true }),
     /** field of view in degrees */
     FOV("FOV", 0xFFE0A040, new String[] { "FOV" }, new boolean[] { false }),
     /** time of day in ticks (0-24000, values above wrap) */

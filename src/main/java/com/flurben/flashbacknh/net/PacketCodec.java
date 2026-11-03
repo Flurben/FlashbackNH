@@ -19,13 +19,14 @@ import io.netty.buffer.Unpooled;
 /** Converts clientbound PLAY packets to and from their wire representation ({@code varint id + payload}). */
 public final class PacketCodec {
 
-    private static final Set<Class<?>> warnedClasses = Collections.newSetFromMap(new ConcurrentHashMap<Class<?>, Boolean>());
+    private static final Set<Class<?>> warnedClasses = Collections
+        .newSetFromMap(new ConcurrentHashMap<Class<?>, Boolean>());
 
     private PacketCodec() {}
 
     @SuppressWarnings("unchecked")
-    public static BiMap<Integer, Class<?>> clientbound() {
-        return (BiMap<Integer, Class<?>>) EnumConnectionState.PLAY.func_150755_b();
+    public static BiMap<Integer, Class<? extends Packet>> clientbound() {
+        return EnumConnectionState.PLAY.func_150755_b();
     }
 
     public static Integer idOf(Packet packet) {
@@ -43,7 +44,10 @@ public final class PacketCodec {
         Integer id = idOf(packet);
         if (id == null) {
             if (warnedClasses.add(packet.getClass())) {
-                FlashbackNH.LOG.warn("Cannot record unknown packet class {}", packet.getClass().getName());
+                FlashbackNH.LOG.warn(
+                    "Cannot record unknown packet class {}",
+                    packet.getClass()
+                        .getName());
             }
             return null;
         }

@@ -12,7 +12,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import com.flurben.flashbacknh.replay.ReplayHandler;
 
 /**
- * Camera FOV, roll and shake for replays. Both are applied through the regular camera setup, so shader packs (Angelica/Iris)
+ * Camera FOV, roll and shake for replays. Both are applied through the regular camera setup, so shader packs
+ * (Angelica/Iris)
  * see exactly the same projection and view matrices as the vanilla renderer.
  */
 @Mixin(EntityRenderer.class)

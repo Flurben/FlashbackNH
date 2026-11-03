@@ -101,7 +101,8 @@ public final class ClientEvents {
             else RecordingManager.INSTANCE.start();
         }
         if (KeyBindings.pauseRecording.isPressed()) RecordingManager.INSTANCE.togglePause();
-        if (KeyBindings.openReplays.isPressed() && mc.theWorld == null) mc.displayGuiScreen(new GuiReplaySelect(mc.currentScreen));
+        if (KeyBindings.openReplays.isPressed() && mc.theWorld == null)
+            mc.displayGuiScreen(new GuiReplaySelect(mc.currentScreen));
         for (int i = 0; i < KeyBindings.markers.length; i++) {
             if (KeyBindings.markers[i].isPressed()) RecordingManager.INSTANCE.addMarker(i);
         }
@@ -189,7 +190,12 @@ public final class ClientEvents {
                 mc.displayGuiScreen(new net.minecraft.client.gui.GuiYesNo((result, i) -> {
                     if (result) RecordingManager.INSTANCE.cancel();
                     mc.displayGuiScreen(null);
-                }, "Cancel the recording?", "You won't be able to recover it", "Cancel Recording", "Keep Recording", 0));
+                },
+                    "Cancel the recording?",
+                    "You won't be able to recover it",
+                    "Cancel Recording",
+                    "Keep Recording",
+                    0));
                 break;
             default:
                 return;

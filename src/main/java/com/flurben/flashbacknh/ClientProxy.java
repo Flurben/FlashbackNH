@@ -38,6 +38,11 @@ public class ClientProxy extends CommonProxy {
         FMLCommonHandler.instance()
             .bus()
             .register(new ServerTasks());
+        if (com.flurben.flashbacknh.dev.DevDriver.enabled()) {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new com.flurben.flashbacknh.dev.DevDriver());
+        }
         FlashbackNH.LOG.info("FlashbackNH {} loaded", Tags.VERSION);
     }
 }

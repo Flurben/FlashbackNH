@@ -55,7 +55,8 @@ public class GuiRecovery extends GuiScreen {
     private static void recover(File dir) {
         ReplayMeta meta;
         try {
-            meta = ReplayMeta.fromJson(FileUtils.readFileToString(new File(dir, ReplayFormat.ENTRY_META), StandardCharsets.UTF_8));
+            meta = ReplayMeta
+                .fromJson(FileUtils.readFileToString(new File(dir, ReplayFormat.ENTRY_META), StandardCharsets.UTF_8));
         } catch (Throwable t) {
             meta = new ReplayMeta();
             meta.createdAt = dir.lastModified();
@@ -75,7 +76,12 @@ public class GuiRecovery extends GuiScreen {
         int cx = width / 2, y = height / 2 - 50;
         drawCenteredString(fontRendererObj, "FlashbackNH: Recovery", cx, y, 0xFFFFFF);
         drawCenteredString(fontRendererObj, "Found " + dirs.size() + " unfinished recording(s).", cx, y + 16, 0xA0A0A0);
-        drawCenteredString(fontRendererObj, "This usually happens when the game closed unexpectedly while recording.", cx, y + 28, 0xA0A0A0);
+        drawCenteredString(
+            fontRendererObj,
+            "This usually happens when the game closed unexpectedly while recording.",
+            cx,
+            y + 28,
+            0xA0A0A0);
         drawCenteredString(fontRendererObj, "Up to a second of gameplay at the end may be lost.", cx, y + 40, 0xA0A0A0);
         super.drawScreen(mx, my, pt);
     }

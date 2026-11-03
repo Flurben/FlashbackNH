@@ -125,7 +125,9 @@ class ReplayStreamTest {
         try (FileInputStream in = new FileInputStream(f)) {
             byte[] head = new byte[4];
             assertEquals(4, in.read(head));
-            assertEquals(ReplayFormat.MAGIC, ((head[0] & 0xFF) << 24) | ((head[1] & 0xFF) << 16) | ((head[2] & 0xFF) << 8) | (head[3] & 0xFF));
+            assertEquals(
+                ReplayFormat.MAGIC,
+                ((head[0] & 0xFF) << 24) | ((head[1] & 0xFF) << 16) | ((head[2] & 0xFF) << 8) | (head[3] & 0xFF));
         }
     }
 }

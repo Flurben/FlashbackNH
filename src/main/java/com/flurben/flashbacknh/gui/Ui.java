@@ -160,7 +160,7 @@ public final class Ui {
         return value;
     }
 
-    /** "label  [-] value [+]" style numeric editor. Returns the new value. */
+    /** "label [-] value [+]" style numeric editor. Returns the new value. */
     public double stepper(String label, double value, double step, double min, double max, String format, int x, int y,
         int w) {
         int bw = 11;

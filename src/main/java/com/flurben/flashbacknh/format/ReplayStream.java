@@ -53,7 +53,8 @@ public final class ReplayStream implements AutoCloseable {
             if (in.readInt() != ReplayFormat.MAGIC) throw new IOException("Not a FlashbackNH stream");
             int version = in.readInt();
             if (version > ReplayFormat.VERSION) {
-                throw new IOException("Replay stream version " + version + " is newer than supported " + ReplayFormat.VERSION);
+                throw new IOException(
+                    "Replay stream version " + version + " is newer than supported " + ReplayFormat.VERSION);
             }
             long pos = 8;
             starts[count++] = pos;

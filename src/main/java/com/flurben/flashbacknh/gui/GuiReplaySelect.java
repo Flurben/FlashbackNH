@@ -77,7 +77,8 @@ public class GuiReplaySelect extends GuiScreen implements GuiYesNoCallback {
         buttonList.add(openButton = new GuiButton(0, cx - 154, y, 100, 20, "Open Replay"));
         buttonList.add(renameButton = new GuiButton(1, cx - 50, y, 100, 20, "Rename"));
         buttonList.add(deleteButton = new GuiButton(2, cx + 54, y, 100, 20, "Delete"));
-        buttonList.add(new GuiButton(3, cx - 154, y + 24, 100, 20, "Sort: " + SORTS[sortMode] + (sortDescending ? " v" : " ^")));
+        buttonList.add(
+            new GuiButton(3, cx - 154, y + 24, 100, 20, "Sort: " + SORTS[sortMode] + (sortDescending ? " v" : " ^")));
         buttonList.add(new GuiButton(4, cx - 50, y + 24, 100, 20, "Open Folder"));
         buttonList.add(new GuiButton(5, cx + 54, y + 24, 100, 20, "Back"));
         recoverable = RecordingManager.INSTANCE.findRecoverable()
@@ -91,8 +92,9 @@ public class GuiReplaySelect extends GuiScreen implements GuiYesNoCallback {
     private void reload() {
         entries.clear();
         File[] files = RecordingManager.replaysDir()
-            .listFiles((d, n) -> n.toLowerCase()
-                .endsWith(".zip"));
+            .listFiles(
+                (d, n) -> n.toLowerCase()
+                    .endsWith(".zip"));
         if (files != null) {
             for (File f : files) {
                 Entry e = cache.get(f);
@@ -160,7 +162,14 @@ public class GuiReplaySelect extends GuiScreen implements GuiYesNoCallback {
                 break;
             case 2:
                 if (selected >= 0) {
-                    mc.displayGuiScreen(new GuiYesNo(this, "Are you sure you want to delete this replay?", "'" + name(entries.get(selected)) + "' will be lost forever!", "Delete", "Cancel", 0));
+                    mc.displayGuiScreen(
+                        new GuiYesNo(
+                            this,
+                            "Are you sure you want to delete this replay?",
+                            "'" + name(entries.get(selected)) + "' will be lost forever!",
+                            "Delete",
+                            "Cancel",
+                            0));
                 }
                 break;
             case 3:
@@ -186,12 +195,15 @@ public class GuiReplaySelect extends GuiScreen implements GuiYesNoCallback {
         if (value == null || value.trim()
             .isEmpty()) return;
         try {
-            File target = RecordingManager.uniqueFile(RecordingManager.replaysDir(), RecordingManager.sanitize(value.trim()), ".zip");
+            File target = RecordingManager
+                .uniqueFile(RecordingManager.replaysDir(), RecordingManager.sanitize(value.trim()), ".zip");
             if (e.meta != null) {
                 e.meta.name = value.trim();
                 Map<String, byte[]> map = new HashMap<>();
-                map.put(ReplayFormat.ENTRY_META, e.meta.toJson()
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                map.put(
+                    ReplayFormat.ENTRY_META,
+                    e.meta.toJson()
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 ReplayArchive.update(e.file, map);
             }
             if (!e.file.renameTo(target)) error = "Unable to rename file";
@@ -273,7 +285,8 @@ public class GuiReplaySelect extends GuiScreen implements GuiYesNoCallback {
         int maxScroll = Math.max(0, entries.size() * ROW_H - (bottom - top));
         scroll = Math.min(scroll, maxScroll);
         GL11.glEnable(GL11.GL_SCISSOR_TEST);
-        int scale = new net.minecraft.client.gui.ScaledResolution(mc, mc.displayWidth, mc.displayHeight).getScaleFactor();
+        int scale = new net.minecraft.client.gui.ScaledResolution(mc, mc.displayWidth, mc.displayHeight)
+            .getScaleFactor();
         GL11.glScissor(0, mc.displayHeight - bottom * scale, mc.displayWidth, (bottom - top) * scale);
         SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
         for (int i = 0; i < entries.size(); i++) {
@@ -289,15 +302,28 @@ public class GuiReplaySelect extends GuiScreen implements GuiYesNoCallback {
             if (e.meta != null) {
                 String world = (e.meta.singleplayer ? "Singleplayer: " : "Server: ") + e.meta.worldName;
                 drawString(fontRendererObj, fontRendererObj.trimStringToWidth(world, 248), tx, y + 14, 0x909090);
-                String info = df.format(new Date(e.meta.createdAt)) + "   " + e.meta.formatDuration() + "   " + formatSize(e.size);
+                String info = df.format(new Date(e.meta.createdAt)) + "   "
+                    + e.meta.formatDuration()
+                    + "   "
+                    + formatSize(e.size);
                 drawString(fontRendererObj, info, tx, y + 25, 0x707070);
             } else {
-                drawString(fontRendererObj, e.error == null ? "?" : fontRendererObj.trimStringToWidth(e.error, 248), tx, y + 14, 0xE06060);
+                drawString(
+                    fontRendererObj,
+                    e.error == null ? "?" : fontRendererObj.trimStringToWidth(e.error, 248),
+                    tx,
+                    y + 14,
+                    0xE06060);
             }
         }
         GL11.glDisable(GL11.GL_SCISSOR_TEST);
         if (entries.isEmpty()) {
-            drawCenteredString(fontRendererObj, "No replays yet. Record one from the pause menu, or enable auto-recording", width / 2, top + 20, 0x909090);
+            drawCenteredString(
+                fontRendererObj,
+                "No replays yet. Record one from the pause menu, or enable auto-recording",
+                width / 2,
+                top + 20,
+                0x909090);
             drawCenteredString(fontRendererObj, "in the FlashbackNH settings.", width / 2, top + 32, 0x909090);
         }
         if (error != null) drawCenteredString(fontRendererObj, error, width / 2, 22, 0xFF6060);

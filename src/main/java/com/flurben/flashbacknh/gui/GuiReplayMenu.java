@@ -44,7 +44,8 @@ public class GuiReplayMenu extends GuiScreen implements GuiYesNoCallback {
                 mc.displayGuiScreen(new net.minecraft.client.gui.GuiOptions(this, mc.gameSettings));
                 break;
             case 3:
-                mc.displayGuiScreen(new GuiConfig(this, ConfigGuiFactory.elements(), "flashbacknh", false, false, "FlashbackNH"));
+                mc.displayGuiScreen(
+                    new GuiConfig(this, ConfigGuiFactory.elements(), "flashbacknh", false, false, "FlashbackNH"));
                 break;
             case 4:
                 if (h != null) h.exit();
@@ -64,7 +65,12 @@ public class GuiReplayMenu extends GuiScreen implements GuiYesNoCallback {
         drawCenteredString(fontRendererObj, "Replay", width / 2, 40, 0xFFFFFF);
         ReplayHandler h = ReplayHandler.get();
         if (h != null) {
-            drawCenteredString(fontRendererObj, h.meta.name + " - " + ReplayMeta.formatTicks(h.getTotalTicks()), width / 2, 54, 0xA0A0A0);
+            drawCenteredString(
+                fontRendererObj,
+                h.meta.name + " - " + ReplayMeta.formatTicks(h.getTotalTicks()),
+                width / 2,
+                54,
+                0xA0A0A0);
         }
         super.drawScreen(mx, my, pt);
     }

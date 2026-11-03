@@ -36,8 +36,10 @@ public class GuiExport extends GuiScreen {
     private int extraFrames;
     private String error;
 
-    private static final String[] PRESETS = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow" };
-    private static final int[][] RESOLUTIONS = { { 1280, 720 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 }, { 1080, 1920 }, { 1080, 1080 } };
+    private static final String[] PRESETS = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow",
+        "slower", "veryslow" };
+    private static final int[][] RESOLUTIONS = { { 1280, 720 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 },
+        { 1080, 1920 }, { 1080, 1080 } };
 
     public GuiExport(GuiScreen parent) {
         this.parent = parent;
@@ -51,7 +53,9 @@ public class GuiExport extends GuiScreen {
         extraFrames = Config.exportExtraFrames;
         if (!ffmpegProbed) {
             ffmpegProbed = true;
-            Thread t = new Thread(() -> ffmpegVersion = FFmpegEncoder.probe(Config.ffmpegPath), "FlashbackNH ffmpeg probe");
+            Thread t = new Thread(
+                () -> ffmpegVersion = FFmpegEncoder.probe(Config.ffmpegPath),
+                "FlashbackNH ffmpeg probe");
             t.setDaemon(true);
             t.start();
         }
@@ -198,7 +202,8 @@ public class GuiExport extends GuiScreen {
             return;
         }
         if (format != FFmpegEncoder.Format.PNG && ffmpegProbed && ffmpegVersion == null) {
-            error = "ffmpeg not found ('" + Config.ffmpegPath + "'). Install it, set its path in the config, or export PNG.";
+            error = "ffmpeg not found ('" + Config.ffmpegPath
+                + "'). Install it, set its path in the config, or export PNG.";
             return;
         }
         String name = expandName(nameField.getText(), h);
@@ -299,7 +304,8 @@ public class GuiExport extends GuiScreen {
         if (h != null) {
             int s = parseInt(startField, 0), e = parseInt(endField, 0);
             String dur = ReplayMeta.formatTicks(Math.max(0, e - s));
-            if (useSpeedTrack && h.editor.track(TrackType.SPEED).isActive()) dur += " (before speed keyframes)";
+            if (useSpeedTrack && h.editor.track(TrackType.SPEED)
+                .isActive()) dur += " (before speed keyframes)";
             drawString(fontRendererObj, dur, left + 258, y + 5, 0x707070);
         }
         y += 72;
@@ -323,7 +329,12 @@ public class GuiExport extends GuiScreen {
             color = 0xE07070;
         }
         drawCenteredString(fontRendererObj, status, cx, height - 36, color);
-        drawCenteredString(fontRendererObj, "Audio is not exported. Tip: use the in/out points (I/O) to set the range.", cx, height - 24, 0x707070);
+        drawCenteredString(
+            fontRendererObj,
+            "Audio is not exported. Tip: use the in/out points (I/O) to set the range.",
+            cx,
+            height - 24,
+            0x707070);
         if (error != null) drawCenteredString(fontRendererObj, error, cx, 28, 0xFF6060);
     }
 

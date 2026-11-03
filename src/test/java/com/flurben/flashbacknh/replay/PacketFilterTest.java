@@ -59,7 +59,9 @@ class PacketFilterTest {
     @Test
     void playerOnlyPacketsAreDropped() {
         for (int id : new int[] { 0x00, 0x06, 0x09, 0x1F, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x36, 0x39, 0x40 }) {
-            assertNull(PacketFilter.filter(new byte[] { (byte) id, 0, 0, 0, 0 }, null), "packet 0x" + Integer.toHexString(id));
+            assertNull(
+                PacketFilter.filter(new byte[] { (byte) id, 0, 0, 0, 0 }, null),
+                "packet 0x" + Integer.toHexString(id));
         }
     }
 
