@@ -44,7 +44,12 @@ public final class ChunkWaiter {
             angelicaChecked = true;
             try {
                 Class<?> c = Class.forName("com.gtnewhorizons.angelica.rendering.celeritas.CeleritasWorldRenderer");
-                angelicaInstance = c.getMethod("getInstanceOrNull");
+                // older Angelica 2.x only has getInstance, which throws until the renderer exists
+                try {
+                    angelicaInstance = c.getMethod("getInstanceOrNull");
+                } catch (NoSuchMethodException e) {
+                    angelicaInstance = c.getMethod("getInstance");
+                }
                 angelicaComplete = c.getMethod("isTerrainRenderComplete");
                 FlashbackNH.LOG.info("Angelica detected: export waits for Celeritas chunk builds");
             } catch (Throwable ignored) {

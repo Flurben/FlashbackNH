@@ -297,6 +297,19 @@ public final class DevDriver {
             case "hidegui":
                 mc.gameSettings.hideGUI = a[1].equals("on");
                 break;
+            case "resize":
+                ((com.flurben.flashbacknh.mixins.early.AccessorMinecraft) mc)
+                    .flashbacknh$resize(Integer.parseInt(a[1]), Integer.parseInt(a[2]));
+                break;
+            case "shaderreload":
+                try {
+                    Class.forName("net.coderbot.iris.Iris")
+                        .getMethod("reload")
+                        .invoke(null);
+                } catch (ReflectiveOperationException e) {
+                    log("shader reload failed: " + e);
+                }
+                break;
             case "halt":
                 log("halting the JVM to simulate a crash");
                 Runtime.getRuntime()

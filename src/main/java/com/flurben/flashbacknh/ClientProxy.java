@@ -8,6 +8,7 @@ import org.apache.commons.io.FileUtils;
 
 import com.flurben.flashbacknh.client.ClientEvents;
 import com.flurben.flashbacknh.client.KeyBindings;
+import com.flurben.flashbacknh.compat.DistantHorizonsCompat;
 import com.flurben.flashbacknh.recording.RecordingManager;
 import com.flurben.flashbacknh.util.ServerTasks;
 
@@ -38,6 +39,12 @@ public class ClientProxy extends CommonProxy {
         FMLCommonHandler.instance()
             .bus()
             .register(new ServerTasks());
+        DistantHorizonsCompat.init();
+        if (DistantHorizonsCompat.isAvailable()) {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new DistantHorizonsCompat.Events());
+        }
         if (com.flurben.flashbacknh.dev.DevDriver.enabled()) {
             com.flurben.flashbacknh.dev.DevDriver driver = new com.flurben.flashbacknh.dev.DevDriver();
             FMLCommonHandler.instance()

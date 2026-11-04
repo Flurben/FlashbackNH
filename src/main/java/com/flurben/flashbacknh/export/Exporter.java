@@ -20,6 +20,7 @@ import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
 import com.flurben.flashbacknh.FlashbackNH;
+import com.flurben.flashbacknh.compat.DistantHorizonsCompat;
 import com.flurben.flashbacknh.editor.KeyframeTrack;
 import com.flurben.flashbacknh.editor.TrackType;
 import com.flurben.flashbacknh.gui.GuiReplayEditor;
@@ -137,7 +138,11 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         mc.getSoundHandler()
             .pauseSounds();
 
-        ((AccessorMinecraft) mc).flashbacknh$resize(settings.width, settings.height);
+        // even a resize to the same size rebuilds the framebuffer, which disturbs active shaders
+        if (savedWidth != settings.width || savedHeight != settings.height) {
+            ((AccessorMinecraft) mc).flashbacknh$resize(settings.width, settings.height);
+            DistantHorizonsCompat.reloadShadersAfterResize();
+        }
         pixels = BufferUtils.createByteBuffer(settings.width * settings.height * 4);
 
         handler.seek(settings.startTick);
@@ -176,6 +181,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         if (mc.displayWidth != settings.width || mc.displayHeight != settings.height) {
             // window was resized by the user: force our size back
             ((AccessorMinecraft) mc).flashbacknh$resize(settings.width, settings.height);
+            DistantHorizonsCompat.reloadShadersAfterResize();
             warmupLeft = Math.max(warmupLeft, 5);
         }
         if (mc.currentScreen != null) mc.displayGuiScreen(null);
@@ -184,6 +190,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
                 warmupLeft--;
                 return;
             }
+            if (settings.waitForChunks && DistantHorizonsCompat.isLoadingLods()) return;
             if (settings.waitForChunks && waited < 240 && !ChunkWaiter.isComplete()) {
                 waited++;
                 return;
@@ -294,7 +301,10 @@ public final class Exporter implements ReplayHandler.ClockDriver {
             w = savedWidth;
             h = savedHeight;
         }
-        ((AccessorMinecraft) mc).flashbacknh$resize(w, h);
+        if (w != mc.displayWidth || h != mc.displayHeight) {
+            ((AccessorMinecraft) mc).flashbacknh$resize(w, h);
+            DistantHorizonsCompat.reloadShadersAfterResize();
+        }
         mc.getSoundHandler()
             .resumeSounds();
         active = null;

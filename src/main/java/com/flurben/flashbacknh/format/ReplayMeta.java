@@ -1,7 +1,9 @@
 package com.flurben.flashbacknh.format;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -26,6 +28,8 @@ public final class ReplayMeta {
     public int localPlayerEntityId = 0;
     public List<Marker> markers = new ArrayList<>();
     public List<String> mods = new ArrayList<>();
+    /** Distant Horizons data folder of each dimension, relative to the game directory. */
+    public Map<String, String> dhFolders = new HashMap<>();
 
     public static final class Marker {
 
@@ -54,6 +58,7 @@ public final class ReplayMeta {
         if (meta == null) meta = new ReplayMeta();
         if (meta.markers == null) meta.markers = new ArrayList<>();
         if (meta.mods == null) meta.mods = new ArrayList<>();
+        if (meta.dhFolders == null) meta.dhFolders = new HashMap<>();
         if (meta.name == null) meta.name = "Replay";
         if (meta.worldName == null) meta.worldName = "";
         return meta;

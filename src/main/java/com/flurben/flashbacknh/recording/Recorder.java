@@ -382,6 +382,7 @@ public final class Recorder {
         String json;
         synchronized (meta) {
             meta.durationTicks = writer.getTicks();
+            meta.dhFolders.putAll(com.flurben.flashbacknh.compat.DistantHorizonsCompat.currentFolders());
             json = meta.toJson();
         }
         try (FileOutputStream out = new FileOutputStream(new File(workDir, WORK_META))) {

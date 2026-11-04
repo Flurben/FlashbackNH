@@ -31,6 +31,7 @@ import net.minecraft.world.WorldSettings;
 import org.apache.commons.io.FileUtils;
 
 import com.flurben.flashbacknh.FlashbackNH;
+import com.flurben.flashbacknh.compat.DistantHorizonsCompat;
 import com.flurben.flashbacknh.editor.EditorState;
 import com.flurben.flashbacknh.editor.KeyframeTrack;
 import com.flurben.flashbacknh.editor.TrackType;
@@ -185,6 +186,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
         }
         active = handler;
         CameraEntity.forgetLast();
+        DistantHorizonsCompat.enterReplay(meta.dhFolders);
         try {
             handler.startConnection();
             handler.fastForwardTo(0);
@@ -217,6 +219,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             FlashbackNH.LOG.error("Error while closing replay world", t);
         }
         active = null;
+        DistantHorizonsCompat.exitReplay();
         RegistrySnapshot.revert();
         VisualsApplier.restore();
         try {
@@ -430,10 +433,10 @@ public final class ReplayHandler implements PacketFilter.Listener {
         tick = MathHelper.clamp_int(tick, 0, getTotalTicks() - 1);
         seeking = true;
         try {
-            if (tick < currentTick) {
-                startConnection();
-            }
+            boolean reconnect = tick < currentTick;
+            if (reconnect) startConnection();
             fastForwardTo(tick);
+            if (reconnect) DistantHorizonsCompat.reloadLevel(mc.theWorld);
             replayTime = tick;
             pendingWorldTicks = 0;
             if (mc.thePlayer == null || mc.theWorld == null) {

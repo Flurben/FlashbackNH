@@ -43,6 +43,7 @@ public final class Config {
     public static int exportHeight = 1080;
     public static int exportFps = 60;
     public static int exportCrf = 18;
+    public static int dhLodWaitSeconds = 6;
     public static String exportFormat = "MP4";
     public static String exportPreset = "medium";
     public static String exportFilename = "%replay%-%date%-%time%";
@@ -144,6 +145,13 @@ public final class Config {
             CAT_EXPORT,
             ffmpegPath,
             "Path to the ffmpeg executable used for video export. 'ffmpeg' uses the one on your PATH. PNG sequence export does not need ffmpeg.");
+        dhLodWaitSeconds = c.getInt(
+            "dhLodWaitSeconds",
+            CAT_EXPORT,
+            dhLodWaitSeconds,
+            0,
+            300,
+            "With Distant Horizons: seconds an export waits for LODs to load after the replay world loads. Raise this if exports start with distant terrain missing.");
         exportWidth = c.getInt("width", CAT_EXPORT, exportWidth, 16, 16384, "Default export width.");
         exportHeight = c.getInt("height", CAT_EXPORT, exportHeight, 16, 16384, "Default export height.");
         exportFps = c.getInt("fps", CAT_EXPORT, exportFps, 1, 1000, "Default export framerate.");

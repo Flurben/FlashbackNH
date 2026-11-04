@@ -51,7 +51,9 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
 - Renders the replay frame by frame at any resolution and framerate, independent of your real FPS.
 - Formats: MP4/MKV (H.264), WebM (VP9), MOV (ProRes 422 HQ), GIF (via ffmpeg) and PNG image sequences (built in, no
   external tools needed).
-- Waits for chunk building before saving each frame so exports never contain holes (vanilla renderer and Angelica).
+- Waits for chunk building before saving each frame (vanilla renderer and Angelica 2.1.16). The Angelica 1.0.0-beta66b
+  in GT New Horizons 2.8.4 is not recognised by this wait, so the first second or so of an export can still show chunks
+  loading in.
 - Optional extra frames per saved frame for shader packs that use temporal accumulation (TAA).
 - Speed keyframes, optional hidden nametags, progress display, ESC to cancel.
 
@@ -67,6 +69,34 @@ FlashbackNH never replaces any renderer. Everything visual goes through the norm
 
 If something looks wrong with a specific shader pack, try a few "extra frames" in the export settings first.
 
+## Distant Horizons
+
+If [Distant Horizons for 1.7.10](https://github.com/GTNewHorizons/DistantHorizons) is installed, replays and exports
+show the LODs of the recorded world. It is optional, and there is nothing to set up.
+
+Recordings store which DH folder each dimension used. Opening a replay copies that dimension's LOD database to
+`flashbacknh/cache/dh` and DH reads the copy with updates turned off, so a replay never changes your real LOD data or
+adds replayed chunks to it. The copy is deleted when you exit the replay, or on the next game start at the latest.
+
+Limitations:
+
+- LODs come from the database on your computer as it is when you open the replay, not as it was when you recorded. Areas
+  explored later appear in the replay, and changes to the terrain since then show in the distance.
+- A replay shows no LODs if that database is missing, for example on another computer or after deleting the world, and
+  neither do recordings made before this support was added.
+- The first load of each dimension in a replay briefly needs disk space and time for the copy. If there is less free
+  space than the database needs, the replay plays without LODs and says why in the log. Very large databases may cause a
+  short pause, and this has only been tested with a database of about 150 MB.
+- DH has no signal for "LODs finished loading", so exports wait a fixed time after a level loads. If the first frames
+  lack LODs, raise `dhLodWaitSeconds` (default 6) in the export section of the config.
+- Keeping LODs after a backward seek calls DH internals, as its public API can't do this. If a later DH version changes
+  them, a warning is logged and LODs disappear after backward seeks until you reopen the replay; the rest keeps working.
+- Shader packs need their own DH support. Complementary Reimagined r5.7.1 and r5.9.3 show LODs in replays and exports.
+  Complementary Shaders 4.7.2 does not support DH and shows no LODs, in replays or while playing.
+- With a shader pack on, Angelica 2.1.16 and DH stop drawing LODs after any window resize, even in normal play, until the
+  shaders are reloaded. Exports handle this themselves by reloading the shaders when the export size differs from the
+  window, and again afterwards. If you resize the window during a replay, reload the shaders with Angelica's key.
+
 ## What has been tested
 
 Everything below was run in the real game, driven by the test harness described under [Building](#building), with the
@@ -77,7 +107,10 @@ results read from screenshots, exported files and logs.
 - Forge dev client on Java 8, plain and with Angelica 1.0.0-beta66b and GT5-Unofficial 5.09.51.482.
 - The built jar in a copy of the GT New Horizons 2.8.4 pack (311 mods, lwjgl3ify) on Java 25, launched through Prism.
 - A local dedicated server (`runServer`, with GT5-Unofficial) for the server tests.
-- Shaders: Angelica with no pack and with Complementary Shaders 4.7.2.
+- Shaders: Angelica with no pack and with Complementary Shaders 4.7.2. With Distant Horizons, also Complementary
+  Reimagined r5.7.1 and r5.9.3, without Euphoria Patches.
+- That same pack with Distant Horizons alpha18, Angelica 2.1.16, lwjgl3ify 3.0.15 and GTNHLib 0.9.47, as DH needs a newer
+  Angelica than the pack ships.
 
 **Verified**
 
@@ -91,8 +124,11 @@ results read from screenshots, exported files and logs.
   an existing GTNH world.
 - Editor: adding, moving, copying, pasting and deleting keyframes, in/out points, markers, the camera path following
   keyframes, and the visuals panel (FOV, roll, time, weather, hidden entities, guides).
-- Export at 1920x1080 and 60 FPS: MP4 and PNG sequences with the expected frame counts, complete chunks and no editor
-  GUI or HUD, with and without shaders.
+- Export at 1920x1080 and 60 FPS: MP4 and PNG sequences with the expected frame counts and no editor GUI or HUD, with
+  and without shaders. On the pack's own Angelica the first second can show chunks loading in (see [Export](#export)).
+- Distant Horizons, singleplayer overworld: LODs at replay open, after seeking both ways, in an MP4 export, and live
+  again afterwards. A checksum of the real LOD database did not change between opening and exiting the replay. The same
+  with Complementary Reimagined r5.7.1 and r5.9.3, the latter also with exports at the window size.
 - GregTech: machine hulls, basic machines, wires and pipes in replays and exports. Live and replayed views match under
   shaders.
 - No crashes and no failed replay packets in the final runs.
@@ -103,6 +139,8 @@ results read from screenshots, exported files and logs.
   button to fly and the Ctrl shortcuts themselves have not been exercised, although the actions behind them have.
 - Export formats other than MP4 and PNG, cancelling an export with ESC, and other shader packs.
 - Long recordings, large bases, public servers and other versions of the pack.
+- Distant Horizons on servers, across dimension changes, with other DH or Angelica versions, or with large databases.
+- Other addons. FalseTweaks 4.4.5 crashed at startup in the pack with FlashbackNH installed; the cause was not determined.
 
 ## Installation
 
