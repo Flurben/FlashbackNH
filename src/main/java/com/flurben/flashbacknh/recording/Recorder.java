@@ -14,6 +14,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.server.integrated.IntegratedServer;
@@ -48,7 +49,7 @@ public final class Recorder {
     private final NetworkManager manager;
     private final boolean fromJoin;
     private final File workDir;
-    private final RecordWriter writer;
+    private final RecordQueue queue;
     private final ReplayMeta meta = new ReplayMeta();
     private final LocalPlayerRecorder localPlayer;
     private final Object lock = new Object();
@@ -59,7 +60,6 @@ public final class Recorder {
     private volatile boolean started;
     private volatile boolean paused;
     private boolean finished;
-    private long lastFlush;
     private long lastMetaSave;
     private int pendingThumbnailTicks = 100; // after the "started recording" notification is gone
     private int failures;
@@ -73,7 +73,7 @@ public final class Recorder {
             UUID.randomUUID()
                 .toString());
         if (!workDir.mkdirs()) throw new IOException("Unable to create " + workDir);
-        this.writer = new RecordWriter(new File(workDir, WORK_STREAM), false);
+        this.queue = new RecordQueue(new RecordWriter(new File(workDir, WORK_STREAM), false));
         GameProfile profile = mc.getSession()
             .func_148256_e();
         this.localPlayer = new LocalPlayerRecorder(this, profile);
@@ -134,7 +134,7 @@ public final class Recorder {
     }
 
     public int getTicks() {
-        return writer.getTicks();
+        return queue.getTicks();
     }
 
     public NetworkManager getManager() {
@@ -178,23 +178,19 @@ public final class Recorder {
                 return;
             }
             if (paused) return;
-            try {
-                writer.writeRecord(ReplayFormat.REC_PACKET, data);
-            } catch (IOException e) {
-                if (failures++ < 5) FlashbackNH.LOG.error("Failed to write packet", e);
-            }
+            queue.add(ReplayFormat.REC_PACKET, data);
         }
     }
 
     void writeRaw(byte type, byte[] data) throws IOException {
         synchronized (lock) {
             if (finished) return;
-            writer.writeRecord(type, data);
+            queue.add(type, data);
         }
     }
 
     /** Starts writing. Called on the client thread once the player is in a world. */
-    private void begin() throws IOException {
+    private void begin() {
         writeRegistry();
         synchronized (lock) {
             int joinIndex = -1;
@@ -206,36 +202,40 @@ public final class Recorder {
                     }
                 }
             }
-            List<int[]> missingDescriptions = null;
             if (joinIndex >= 0) {
                 // We saw the whole login: the stream itself is an exact record of the world
                 for (int i = joinIndex; i < preStartBuffer.size(); i++) {
-                    writer.writeRecord(ReplayFormat.REC_PACKET, preStartBuffer.get(i));
+                    queue.add(ReplayFormat.REC_PACKET, preStartBuffer.get(i));
                 }
             } else {
-                WorldSnapshot snapshot = WorldSnapshot.create(mc, true, null);
-                for (WorldSnapshot.Rec rec : snapshot.records) writer.writeRecord(rec.type, rec.data);
-                missingDescriptions = snapshot.tilesWithoutDescription;
+                addSnapshot(true, null);
                 for (Packet p : queuedAtAttach) {
                     try {
                         byte[] data = PacketCodec.encode(p);
-                        if (data != null) writer.writeRecord(ReplayFormat.REC_PACKET, data);
+                        if (data != null) queue.add(ReplayFormat.REC_PACKET, data);
                     } catch (Throwable t) {
                         FlashbackNH.LOG.debug("Unable to record queued packet {}", p, t);
                     }
                 }
-                for (byte[] data : preStartBuffer) writer.writeRecord(ReplayFormat.REC_PACKET, data);
+                for (byte[] data : preStartBuffer) queue.add(ReplayFormat.REC_PACKET, data);
             }
             preStartBuffer.clear();
             queuedAtAttach.clear();
             started = true;
             localPlayer.forceRespawn();
-            if (missingDescriptions != null && !missingDescriptions.isEmpty()) {
-                requestServerDescriptions(missingDescriptions);
-            }
         }
         saveMeta();
         FlashbackNH.LOG.info("Recording started ({})", fromJoin ? "from join" : "snapshot");
+    }
+
+    private void addSnapshot(boolean initial, Integer lastDim) {
+        final long start = System.nanoTime();
+        WorldSnapshot snapshot = WorldSnapshot.create(mc, initial, lastDim, this::requestServerDescriptions);
+        queue.addAll(snapshot.records);
+        FlashbackNH.LOG.info("World snapshot held up the game for {} ms", (System.nanoTime() - start) / 1_000_000L);
+        queue.addAction(
+            () -> FlashbackNH.LOG
+                .info("World snapshot finished after {} ms", (System.nanoTime() - start) / 1_000_000L));
     }
 
     /**
@@ -244,10 +244,13 @@ public final class Recorder {
      * starting to watch a chunk.
      */
     private void requestServerDescriptions(final List<int[]> positions) {
+        if (positions.isEmpty()) return;
         final IntegratedServer server = mc.getIntegratedServer();
-        if (server == null || !manager.isLocalChannel() || mc.thePlayer == null) return;
-        final int dim = mc.thePlayer.dimension;
+        final EntityPlayer player = mc.thePlayer;
+        if (server == null || !manager.isLocalChannel() || player == null) return;
+        final int dim = player.dimension;
         ServerTasks.schedule(() -> {
+            long serverStart = System.nanoTime();
             WorldServer ws = server.worldServerForDimension(dim);
             if (ws == null) return;
             for (int[] pos : positions) {
@@ -263,6 +266,10 @@ public final class Recorder {
                     FlashbackNH.LOG.debug("Server description failed at {},{},{}", pos[0], pos[1], pos[2], t);
                 }
             }
+            FlashbackNH.LOG.info(
+                "Server descriptions for {} tile entities took {} ms",
+                positions.size(),
+                (System.nanoTime() - serverStart) / 1_000_000L);
         });
     }
 
@@ -297,18 +304,12 @@ public final class Recorder {
         try {
             localPlayer.tick(mc);
             synchronized (lock) {
-                writer.writeTick();
+                queue.addTick();
             }
         } catch (Throwable e) {
             if (failures++ < 5) FlashbackNH.LOG.error("Recording tick failed", e);
         }
         long now = System.currentTimeMillis();
-        if (now - lastFlush > 1000) {
-            lastFlush = now;
-            try {
-                writer.flush();
-            } catch (IOException ignored) {}
-        }
         if (now - lastMetaSave > 10000) {
             saveMeta();
         }
@@ -358,19 +359,10 @@ public final class Recorder {
             return;
         }
         synchronized (lock) {
-            try {
-                if (mc.theWorld != null && mc.thePlayer != null) {
-                    writer.writeRecord(ReplayFormat.REC_CLEAR_WORLD, new byte[0]);
-                    int lastDim = localPlayer.getLastDimension();
-                    WorldSnapshot snapshot = WorldSnapshot
-                        .create(mc, false, lastDim == Integer.MIN_VALUE ? null : lastDim);
-                    for (WorldSnapshot.Rec rec : snapshot.records) writer.writeRecord(rec.type, rec.data);
-                    if (!snapshot.tilesWithoutDescription.isEmpty()) {
-                        requestServerDescriptions(snapshot.tilesWithoutDescription);
-                    }
-                }
-            } catch (IOException e) {
-                FlashbackNH.LOG.error("Failed to write resume snapshot", e);
+            if (mc.theWorld != null && mc.thePlayer != null) {
+                queue.add(ReplayFormat.REC_CLEAR_WORLD, new byte[0]);
+                int lastDim = localPlayer.getLastDimension();
+                addSnapshot(false, lastDim == Integer.MIN_VALUE ? null : lastDim);
             }
             localPlayer.forceRespawn();
             paused = false;
@@ -381,7 +373,7 @@ public final class Recorder {
         lastMetaSave = System.currentTimeMillis();
         String json;
         synchronized (meta) {
-            meta.durationTicks = writer.getTicks();
+            meta.durationTicks = queue.getTicks();
             meta.dhFolders.putAll(com.flurben.flashbacknh.compat.DistantHorizonsCompat.currentFolders());
             json = meta.toJson();
         }
@@ -409,11 +401,7 @@ public final class Recorder {
                                 .pipeline()));
             }
         } catch (Throwable ignored) {}
-        try {
-            writer.close();
-        } catch (IOException e) {
-            FlashbackNH.LOG.error("Failed to close recording", e);
-        }
+        queue.close();
         saveMeta();
     }
 

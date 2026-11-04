@@ -22,7 +22,7 @@ package com.flurben.flashbacknh.format;
 public final class ReplayFormat {
 
     public static final int MAGIC = 0x46424E48; // "FBNH"
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     public static final String ENTRY_META = "metadata.json";
     public static final String ENTRY_STREAM = "stream.fbnh";
@@ -39,7 +39,10 @@ public final class ReplayFormat {
      * boolean onGround.
      */
     public static final byte REC_LOCAL_MOVE = 2;
-    /** Client-side tile entity state for tiles without a description packet: int x, y, z, NBT compound. */
+    /**
+     * Client-side tile entity state for tiles without a description packet: int x, y, z, NBT compound. Only found in
+     * version 1 streams, later ones use {@link #REC_TILE_BATCH}.
+     */
     public static final byte REC_TILE_NBT = 3;
     /** Clear all entities and chunks (used before a fresh snapshot, e.g. after unpausing a recording). */
     public static final byte REC_CLEAR_WORLD = 4;
@@ -47,6 +50,13 @@ public final class ReplayFormat {
     public static final byte REC_LOCAL_PLAYER = 5;
     /** First-person HUD state for the recording player: see {@code HotbarState}. */
     public static final byte REC_HOTBAR = 6;
+    /** Many tile entities restored from NBT at once: see {@link TileBatch}. Since version 2. */
+    public static final byte REC_TILE_BATCH = 7;
+    /**
+     * The same record as one earlier in the stream, which saves storing a chunk again when it comes back unchanged:
+     * long position of that record in the stream. Since version 2.
+     */
+    public static final byte REC_REPEAT = 8;
 
     private ReplayFormat() {}
 }

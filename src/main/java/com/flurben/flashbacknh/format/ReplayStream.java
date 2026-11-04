@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 /**
@@ -60,11 +61,11 @@ public final class ReplayStream implements AutoCloseable {
             starts[count++] = pos;
             validEnd = pos;
             long fileLen = file.length();
+            int[] varLen = new int[1];
             while (pos < fileLen) {
                 int type = in.read();
                 if (type < 0) break;
                 int len;
-                int[] varLen = new int[1];
                 try {
                     len = readVarInt(in, varLen);
                 } catch (EOFException e) {
@@ -113,9 +114,33 @@ public final class ReplayStream implements AutoCloseable {
             }
             byte[] data = new byte[len];
             read(pos, data);
+            long payloadStart = pos;
             pos += len;
-            consumer.accept(new Record((byte) type, data));
+            if (type == ReplayFormat.REC_REPEAT) {
+                consumer.accept(readRepeated(data, payloadStart));
+            } else {
+                consumer.accept(new Record((byte) type, data));
+            }
         }
+    }
+
+    private Record readRepeated(byte[] reference, long from) throws IOException {
+        long pos = ByteBuffer.wrap(reference)
+            .getLong();
+        if (pos < 8 || pos >= from) throw new IOException("Bad repeat reference " + pos + " at " + from);
+        int type = byteAt(pos++);
+        int len = 0;
+        int shift = 0;
+        while (true) {
+            int b = byteAt(pos++);
+            len |= (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) break;
+            shift += 7;
+            if (shift > 35) throw new IOException("VarInt too big");
+        }
+        byte[] data = new byte[len];
+        read(pos, data);
+        return new Record((byte) type, data);
     }
 
     private int byteAt(long pos) throws IOException {

@@ -70,12 +70,39 @@ public final class DevDriver {
     private long waitUntil;
     private String waitCondition;
     private long waitDeadline;
+    private long lastFrame;
 
     public DevDriver() {
         dir.mkdirs();
         // commands left over from an earlier run must not execute again
         readOffset = commands.exists() ? commands.length() : 0;
         log("driver ready");
+    }
+
+    /**
+     * Writes the state of every tile entity without a description packet, sorted, to compare a replay with the game.
+     */
+    private void dumpTiles(String name, int blockX, int blockZ) throws IOException {
+        List<String> lines = new ArrayList<>();
+        for (int cx = (blockX >> 4) - 40; cx <= (blockX >> 4) + 40; cx++) {
+            for (int cz = (blockZ >> 4) - 40; cz <= (blockZ >> 4) + 40; cz++) {
+                net.minecraft.world.chunk.Chunk chunk = mc.theWorld.getChunkProvider()
+                    .provideChunk(cx, cz);
+                if (chunk == null || chunk instanceof net.minecraft.world.chunk.EmptyChunk) continue;
+                for (Object o : new ArrayList<Object>(chunk.chunkTileEntityMap.values())) {
+                    net.minecraft.tileentity.TileEntity te = (net.minecraft.tileentity.TileEntity) o;
+                    if (te.isInvalid() || te.getDescriptionPacket() != null) continue;
+                    net.minecraft.nbt.NBTTagCompound tag = new net.minecraft.nbt.NBTTagCompound();
+                    te.writeToNBT(tag);
+                    lines.add(te.xCoord + " " + te.yCoord + " " + te.zCoord + " " + tag);
+                }
+            }
+        }
+        java.util.Collections.sort(lines);
+        try (PrintWriter w = new PrintWriter(new File(dir, "tiles_" + name + ".txt"))) {
+            for (String line : lines) w.println(line);
+        }
+        log("tiledump " + name + " " + lines.size());
     }
 
     private void log(String line) {
@@ -88,6 +115,11 @@ public final class DevDriver {
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
+        long frameNow = System.nanoTime();
+        if (lastFrame != 0 && mc.theWorld != null && frameNow - lastFrame > 100_000_000L) {
+            log("long frame " + (frameNow - lastFrame) / 1_000_000L + " ms");
+        }
+        lastFrame = frameNow;
         try {
             poll();
             step();
@@ -236,6 +268,9 @@ public final class DevDriver {
                 break;
             case "open":
                 ReplayHandler.open(replayFile(a[1]));
+                break;
+            case "tiledump":
+                dumpTiles(a[1], Integer.parseInt(a[2]), Integer.parseInt(a[3]));
                 break;
             case "listreplays":
                 log(

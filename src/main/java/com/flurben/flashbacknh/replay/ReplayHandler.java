@@ -41,6 +41,7 @@ import com.flurben.flashbacknh.format.ReplayArchive;
 import com.flurben.flashbacknh.format.ReplayFormat;
 import com.flurben.flashbacknh.format.ReplayMeta;
 import com.flurben.flashbacknh.format.ReplayStream;
+import com.flurben.flashbacknh.format.TileBatch;
 import com.flurben.flashbacknh.gui.GuiReplayEditor;
 import com.flurben.flashbacknh.gui.GuiReplaySelect;
 import com.flurben.flashbacknh.mixins.early.AccessorEntityLivingBase;
@@ -65,6 +66,9 @@ import com.flurben.flashbacknh.util.Notifications;
  * and slow motion are perfectly smooth.
  */
 public final class ReplayHandler implements PacketFilter.Listener {
+
+    /** About 30 times as much once decoded. */
+    private static final int FAST_FORWARD_FLUSH_BYTES = 8 << 20;
 
     private static ReplayHandler active;
     private static final Visuals DEFAULT_VISUALS = new Visuals();
@@ -108,6 +112,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private long lastFrameNanos;
     private boolean worldTick;
     private boolean seeking;
+    private boolean fastForwarding;
+    private long deliveredBytes;
 
     private int localPlayerId = Integer.MIN_VALUE;
     private HotbarState hotbar;
@@ -150,6 +156,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
         if (mc.theWorld != null) throw new IllegalStateException("Leave the world before opening a replay");
         if (RecordingManager.INSTANCE.isRecording()) RecordingManager.INSTANCE.finish();
 
+        long openStart = System.nanoTime();
         ReplayMeta meta = ReplayArchive.readMeta(archive);
         File cacheDir = new File(RecordingManager.rootDir(), "cache");
         cacheDir.mkdirs();
@@ -158,6 +165,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             throw new IOException("Replay has no stream");
         }
         ReplayStream stream = ReplayStream.open(streamFile);
+        long indexedAt = System.nanoTime();
         if (stream.getTickCount() == 0) {
             stream.close();
             throw new IOException("Replay is empty");
@@ -199,6 +207,11 @@ public final class ReplayHandler implements PacketFilter.Listener {
             throw t instanceof IOException ? (IOException) t : new IOException(t);
         }
         handler.lastFrameNanos = System.nanoTime();
+        FlashbackNH.LOG.info(
+            "Opened replay in {} ms ({} ms extracting and indexing {} bytes)",
+            (handler.lastFrameNanos - openStart) / 1_000_000L,
+            (indexedAt - openStart) / 1_000_000L,
+            streamFile.length());
         mc.displayGuiScreen(new GuiReplayEditor());
     }
 
@@ -432,11 +445,17 @@ public final class ReplayHandler implements PacketFilter.Listener {
     public void seek(int tick) {
         tick = MathHelper.clamp_int(tick, 0, getTotalTicks() - 1);
         seeking = true;
+        long seekStart = System.nanoTime();
         try {
             boolean reconnect = tick < currentTick;
             if (reconnect) startConnection();
             fastForwardTo(tick);
             if (reconnect) DistantHorizonsCompat.reloadLevel(mc.theWorld);
+            FlashbackNH.LOG.debug(
+                "Seek to {} took {} ms{}",
+                tick,
+                (System.nanoTime() - seekStart) / 1_000_000L,
+                reconnect ? " (from the start)" : "");
             replayTime = tick;
             pendingWorldTicks = 0;
             if (mc.thePlayer == null || mc.theWorld == null) {
@@ -467,10 +486,15 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private void fastForwardTo(int target) {
         target = Math.min(target, getTotalTicks() - 1);
         int delivered = 0;
-        while (currentTick < target) {
-            currentTick++;
-            deliverTick(currentTick);
-            if (++delivered % 100 == 0) connection.processAll();
+        fastForwarding = true;
+        try {
+            while (currentTick < target) {
+                currentTick++;
+                deliverTick(currentTick);
+                if (++delivered % 100 == 0) connection.processAll();
+            }
+        } finally {
+            fastForwarding = false;
         }
         connection.processAll();
         settleEntities();
@@ -555,6 +579,11 @@ public final class ReplayHandler implements PacketFilter.Listener {
     }
 
     private void handleRecord(ReplayStream.Record rec) {
+        // A decoded chunk packet holds its chunk uncompressed, so a whole snapshot must not pile up in the queue
+        if (fastForwarding && (deliveredBytes += rec.data.length) >= FAST_FORWARD_FLUSH_BYTES) {
+            deliveredBytes = 0;
+            connection.processAll();
+        }
         switch (rec.type) {
             case ReplayFormat.REC_PACKET: {
                 byte[] data = PacketFilter.filter(rec.data, this);
@@ -585,6 +614,11 @@ public final class ReplayHandler implements PacketFilter.Listener {
             case ReplayFormat.REC_TILE_NBT: {
                 final byte[] d = rec.data;
                 connection.deliver(new ReplayConnection.ActionPacket(() -> applyTileNbt(d)));
+                return;
+            }
+            case ReplayFormat.REC_TILE_BATCH: {
+                final byte[] d = rec.data;
+                connection.deliver(new ReplayConnection.ActionPacket(() -> applyTileBatch(d)));
                 return;
             }
             case ReplayFormat.REC_CLEAR_WORLD:
@@ -662,6 +696,38 @@ public final class ReplayHandler implements PacketFilter.Listener {
             }
         } catch (Throwable t) {
             FlashbackNH.LOG.debug("Unable to restore tile entity state", t);
+        }
+    }
+
+    private void applyTileBatch(byte[] d) {
+        final WorldClient world = mc.theWorld;
+        if (world == null) return;
+        try {
+            TileBatch.read(d, new TileBatch.Sink() {
+
+                @Override
+                public void tile(int x, int y, int z, NBTTagCompound tag) {
+                    try {
+                        TileEntity te = world.getTileEntity(x, y, z);
+                        if (te != null) te.readFromNBT(tag);
+                    } catch (Throwable t) {
+                        FlashbackNH.LOG.debug("Unable to restore tile entity state", t);
+                    }
+                }
+
+                @Override
+                public void chunkDone(int chunkX, int chunkZ, int minY, int maxY) {
+                    world.markBlockRangeForRenderUpdate(
+                        chunkX << 4,
+                        minY,
+                        chunkZ << 4,
+                        (chunkX << 4) + 15,
+                        maxY,
+                        (chunkZ << 4) + 15);
+                }
+            });
+        } catch (Throwable t) {
+            FlashbackNH.LOG.warn("Unable to restore tile entities", t);
         }
     }
 

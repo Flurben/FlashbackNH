@@ -203,7 +203,13 @@ public final class RecordingManager {
                 if (registry.exists()) extra.put(ReplayFormat.ENTRY_REGISTRY, registry);
                 File thumb = new File(workDir, ReplayFormat.ENTRY_THUMBNAIL);
                 if (thumb.exists()) extra.put(ReplayFormat.ENTRY_THUMBNAIL, thumb);
+                long start = System.nanoTime();
                 ReplayArchive.write(target, meta, new File(workDir, ReplayFormat.ENTRY_STREAM), extra);
+                FlashbackNH.LOG.info(
+                    "Saved {} in {} ms: {} bytes",
+                    target.getName(),
+                    (System.nanoTime() - start) / 1_000_000L,
+                    target.length());
                 FileUtils.deleteDirectory(workDir);
                 Notifications.show("Replay saved", target.getName());
             } catch (Throwable e) {
