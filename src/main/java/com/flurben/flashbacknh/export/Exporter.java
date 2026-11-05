@@ -145,7 +145,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         }
         pixels = BufferUtils.createByteBuffer(settings.width * settings.height * 4);
 
-        handler.seek(settings.startTick);
+        handler.seekReloading(settings.startTick);
         time = settings.startTick;
         advance = false;
         warmupLeft = Math.max(1, settings.warmupFrames);

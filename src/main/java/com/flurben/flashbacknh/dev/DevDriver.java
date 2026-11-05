@@ -105,6 +105,82 @@ public final class DevDriver {
         log("tiledump " + name + " " + lines.size());
     }
 
+    /** Writes a summary of every chunk and entity, to compare two ways of arriving at the same tick. */
+    private void dumpWorld(String name, int blockX, int blockZ) throws IOException {
+        long start = System.nanoTime();
+        List<String> lines = new ArrayList<>();
+        for (int cx = (blockX >> 4) - 40; cx <= (blockX >> 4) + 40; cx++) {
+            for (int cz = (blockZ >> 4) - 40; cz <= (blockZ >> 4) + 40; cz++) {
+                net.minecraft.world.chunk.Chunk chunk = mc.theWorld.getChunkProvider()
+                    .provideChunk(cx, cz);
+                if (chunk == null || chunk instanceof net.minecraft.world.chunk.EmptyChunk) continue;
+                long blocks = 17, sky = 17, block = 17;
+                for (int x = 0; x < 16; x++) for (int z = 0; z < 16; z++) for (int y = 0; y < 256; y++) {
+                    blocks = blocks * 31 + net.minecraft.block.Block.getIdFromBlock(chunk.getBlock(x, y, z)) * 16
+                        + chunk.getBlockMetadata(x, y, z);
+                    sky = sky * 31 + chunk.getSavedLightValue(net.minecraft.world.EnumSkyBlock.Sky, x, y, z);
+                    block = block * 31 + chunk.getSavedLightValue(net.minecraft.world.EnumSkyBlock.Block, x, y, z);
+                }
+                List<String> tiles = new ArrayList<>();
+                for (Object o : new ArrayList<Object>(chunk.chunkTileEntityMap.values())) {
+                    net.minecraft.tileentity.TileEntity te = (net.minecraft.tileentity.TileEntity) o;
+                    if (te.isInvalid()) continue;
+                    net.minecraft.nbt.NBTTagCompound tag = new net.minecraft.nbt.NBTTagCompound();
+                    te.writeToNBT(tag);
+                    tiles.add(te.xCoord + " " + te.yCoord + " " + te.zCoord + " " + tag);
+                }
+                java.util.Collections.sort(tiles);
+                lines.add(
+                    "C " + cx
+                        + " "
+                        + cz
+                        + " blocks="
+                        + blocks
+                        + " tiles="
+                        + tiles.size()
+                        + " sky="
+                        + sky
+                        + " block="
+                        + block);
+                for (String tile : tiles) lines.add("T " + cx + " " + cz + " " + tile);
+            }
+        }
+        for (Object o : mc.theWorld.loadedEntityList) {
+            Entity e = (Entity) o;
+            if (e instanceof CameraEntity) continue;
+            lines.add(
+                String.format(
+                    "E %d %s %.3f %.3f %.3f %.1f dead=%s",
+                    e.getEntityId(),
+                    e.getClass()
+                        .getSimpleName(),
+                    e.posX,
+                    e.posY,
+                    e.posZ,
+                    e.rotationYaw,
+                    e.isDead));
+        }
+        lines.add(
+            String.format(
+                "W time=%d rain=%.2f thunder=%.2f raining=%s objectives=%d teams=%d",
+                mc.theWorld.getWorldTime(),
+                mc.theWorld.getRainStrength(1f),
+                mc.theWorld.getWeightedThunderStrength(1f),
+                mc.theWorld.getWorldInfo()
+                    .isRaining(),
+                mc.theWorld.getScoreboard()
+                    .getScoreObjectives()
+                    .size(),
+                mc.theWorld.getScoreboard()
+                    .getTeams()
+                    .size()));
+        java.util.Collections.sort(lines);
+        try (PrintWriter w = new PrintWriter(new File(dir, "world_" + name + ".txt"))) {
+            for (String line : lines) w.println(line);
+        }
+        log("worlddump " + name + " " + lines.size() + " in " + (System.nanoTime() - start) / 1_000_000L + " ms");
+    }
+
     private void log(String line) {
         FlashbackNH.LOG.info("[dev] {}", line);
         try (PrintWriter w = new PrintWriter(new FileWriter(results, true))) {
@@ -292,6 +368,12 @@ public final class DevDriver {
                 break;
             case "seek":
                 h.seek(Integer.parseInt(a[1]));
+                break;
+            case "seekreload":
+                h.seekReloading(Integer.parseInt(a[1]));
+                break;
+            case "worlddump":
+                dumpWorld(a[1], Integer.parseInt(a[2]), Integer.parseInt(a[3]));
                 break;
             case "camera":
                 h.getCamera()

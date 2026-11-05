@@ -34,6 +34,9 @@ public final class TileBatch {
     /** Receives the decoded tile entities, chunk by chunk. */
     public interface Sink {
 
+        /** Whether to make a tag for this tile entity, which is what takes time when there are very many. */
+        boolean wants(int x, int y, int z);
+
         void tile(int x, int y, int z, NBTTagCompound tag);
 
         void chunkDone(int chunkX, int chunkZ, int minY, int maxY);
@@ -164,7 +167,9 @@ public final class TileBatch {
                 int y = position >> 8;
                 int x = chunkX[i] << 4 | (position & 15);
                 int z = chunkZ[i] << 4 | (position >> 4 & 15);
-                NBTTagCompound tag = (NBTTagCompound) templates[ReplayStream.readVarInt(in, null)].copy();
+                NBTTagCompound template = templates[ReplayStream.readVarInt(in, null)];
+                if (!sink.wants(x, y, z)) continue;
+                NBTTagCompound tag = (NBTTagCompound) template.copy();
                 if (!tag.hasKey("x")) tag.setInteger("x", x);
                 if (!tag.hasKey("y")) tag.setInteger("y", y);
                 if (!tag.hasKey("z")) tag.setInteger("z", z);
@@ -172,7 +177,7 @@ public final class TileBatch {
                 minY = Math.min(minY, y);
                 maxY = Math.max(maxY, y);
             }
-            if (counts[i] > 0) sink.chunkDone(chunkX[i], chunkZ[i], minY, maxY);
+            if (minY <= maxY) sink.chunkDone(chunkX[i], chunkZ[i], minY, maxY);
         }
     }
 

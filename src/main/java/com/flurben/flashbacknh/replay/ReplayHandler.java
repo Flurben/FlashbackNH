@@ -8,9 +8,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
+import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityOtherPlayerMP;
 import net.minecraft.client.gui.GuiDownloadTerrain;
@@ -20,13 +24,16 @@ import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Blocks;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.Packet;
+import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.Timer;
 import net.minecraft.world.WorldSettings;
+import net.minecraft.world.chunk.EmptyChunk;
 
 import org.apache.commons.io.FileUtils;
 
@@ -36,9 +43,11 @@ import com.flurben.flashbacknh.editor.EditorState;
 import com.flurben.flashbacknh.editor.KeyframeTrack;
 import com.flurben.flashbacknh.editor.TrackType;
 import com.flurben.flashbacknh.editor.Visuals;
+import com.flurben.flashbacknh.format.PacketChunks;
 import com.flurben.flashbacknh.format.RegistrySnapshot;
 import com.flurben.flashbacknh.format.ReplayArchive;
 import com.flurben.flashbacknh.format.ReplayFormat;
+import com.flurben.flashbacknh.format.ReplayIndex;
 import com.flurben.flashbacknh.format.ReplayMeta;
 import com.flurben.flashbacknh.format.ReplayStream;
 import com.flurben.flashbacknh.format.TileBatch;
@@ -48,9 +57,12 @@ import com.flurben.flashbacknh.mixins.early.AccessorEntityLivingBase;
 import com.flurben.flashbacknh.mixins.early.AccessorEntityOtherPlayerMP;
 import com.flurben.flashbacknh.mixins.early.AccessorEntityRenderer;
 import com.flurben.flashbacknh.mixins.early.AccessorNetHandlerPlayClient;
+import com.flurben.flashbacknh.mixins.early.AccessorRenderGlobal;
+import com.flurben.flashbacknh.mixins.early.AccessorWorldClient;
 import com.flurben.flashbacknh.net.PacketCodec;
 import com.flurben.flashbacknh.recording.HotbarState;
 import com.flurben.flashbacknh.recording.RecordingManager;
+import com.flurben.flashbacknh.recording.WorldSnapshot;
 import com.flurben.flashbacknh.replay.net.PacketFilter;
 import com.flurben.flashbacknh.replay.net.ReplayConnection;
 import com.flurben.flashbacknh.util.Notifications;
@@ -69,6 +81,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
     /** About 30 times as much once decoded. */
     private static final int FAST_FORWARD_FLUSH_BYTES = 8 << 20;
+    /** The effect a jukebox plays its record with. */
+    private static final int EFFECT_RECORD = 1005;
 
     private static ReplayHandler active;
     private static final Visuals DEFAULT_VISUALS = new Visuals();
@@ -114,6 +128,18 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private boolean seeking;
     private boolean fastForwarding;
     private long deliveredBytes;
+    /** While catching up: records before this position are in a world that gets replaced before the target tick. */
+    private long replacedBefore;
+    /** While going back without replacing the world. */
+    private ReplayIndex.Rewind rewind;
+    /**
+     * The last tick each chunk's blocks changed at, or a later one: a packet is sometimes handled after the tick it
+     * belongs to has been passed, and all that matters is never to call a chunk unchanged when it is not.
+     */
+    private final Map<Long, Integer> chunkChanges = new ConcurrentHashMap<>();
+    private final Map<Class<?>, int[]> tileClassCounts = new HashMap<>();
+    /** Tile entity classes that only ever get their state from a snapshot, see {@link #applyTileBatch}. */
+    private final Set<Class<?>> bulkTileClasses = new HashSet<>();
 
     private int localPlayerId = Integer.MIN_VALUE;
     private HotbarState hotbar;
@@ -267,6 +293,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
     }
 
     private void startConnection() {
+        chunkChanges.clear();
+        tileClassCounts.clear();
         if (mc.thePlayer instanceof CameraEntity) ((CameraEntity) mc.thePlayer).remember();
         if (connection != null) connection.close();
         mc.thePlayer = null; // a fresh camera is created with the new world
@@ -441,21 +469,36 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
     // ------------------------------------------------------------------ seeking
 
-    /** Jumps to the given tick. Backwards jumps reload the replay from its start. */
+    /** Jumps to the given tick. Backwards jumps keep the world where they can, and otherwise reload the replay. */
     public void seek(int tick) {
+        seek(tick, clockDriver != null);
+    }
+
+    /**
+     * Jumps to the given tick and, unless that is ahead, gets there by loading the world from scratch. Slower, and for
+     * what cannot depend on the world having been kept.
+     */
+    public void seekReloading(int tick) {
+        seek(tick, true);
+    }
+
+    private void seek(int tick, boolean reload) {
         tick = MathHelper.clamp_int(tick, 0, getTotalTicks() - 1);
         seeking = true;
         long seekStart = System.nanoTime();
         try {
-            boolean reconnect = tick < currentTick;
+            boolean reconnect = reload ? tick <= currentTick : tick < currentTick;
+            boolean kept = reconnect && !reload && rewindKeepingWorld(tick);
+            if (kept) reconnect = false;
             if (reconnect) startConnection();
             fastForwardTo(tick);
+            rewind = null;
             if (reconnect) DistantHorizonsCompat.reloadLevel(mc.theWorld);
             FlashbackNH.LOG.debug(
                 "Seek to {} took {} ms{}",
                 tick,
                 (System.nanoTime() - seekStart) / 1_000_000L,
-                reconnect ? " (from the start)" : "");
+                kept ? " (kept the world)" : reconnect ? " (reloaded)" : "");
             replayTime = tick;
             pendingWorldTicks = 0;
             if (mc.thePlayer == null || mc.theWorld == null) {
@@ -473,9 +516,90 @@ public final class ReplayHandler implements PacketFilter.Listener {
                 mc.displayGuiScreen(new GuiReplaySelect(new GuiMainMenu()));
             }
         } finally {
+            rewind = null;
             seeking = false;
             lastFrameNanos = System.nanoTime();
         }
+    }
+
+    /**
+     * Prepares going back to an earlier tick in the current world, which is much faster than replacing it and also
+     * keeps what the renderer and Distant Horizons have built for it. Everything that can differ is reset and comes
+     * back from the records, except for chunks that are known to be the same at both ticks.
+     *
+     * @return false if this cannot give the same result as loading the tick from scratch
+     */
+    private boolean rewindKeepingWorld(int tick) {
+        WorldClient world = mc.theWorld;
+        if (world == null || connection == null || !(mc.thePlayer instanceof CameraEntity)) return false;
+        List<Long> changed = new ArrayList<>();
+        for (Map.Entry<Long, Integer> e : chunkChanges.entrySet()) {
+            if (e.getValue() > tick) changed.add(e.getKey());
+        }
+        ReplayIndex.Rewind plan = stream.getIndex()
+            .planRewind(currentTick, tick, changed);
+        if (plan == null) return false;
+
+        ((CameraEntity) mc.thePlayer).remember();
+        removeReplayedEntities(world);
+        for (long key : plan.chunks) {
+            chunkChanges.remove(key);
+            int x = ReplayIndex.chunkX(key), z = ReplayIndex.chunkZ(key);
+            if (!(world.getChunkProvider()
+                .provideChunk(x, z) instanceof EmptyChunk)) {
+                world.doPreChunk(x, z, false);
+            }
+        }
+        mc.effectRenderer.clearEffects(world);
+        mc.getSoundHandler()
+            .stopSounds();
+        ((AccessorRenderGlobal) mc.renderGlobal).flashbacknh$getDamagedBlocks()
+            .clear();
+        hotbar = null;
+        recordedWorldTime = -1;
+        timeOverridden = false;
+        if (plan.boundary.rebuildsAll) {
+            world.setWorldScoreboard(new Scoreboard());
+            connection.handler.playerInfoList.clear();
+            ((AccessorNetHandlerPlayClient) connection.handler).flashbacknh$getPlayerInfoMap()
+                .clear();
+            world.getWorldInfo()
+                .setRaining(false);
+            world.getWorldInfo()
+                .setThundering(false);
+            world.setRainStrength(0);
+            world.setThunderStrength(0);
+            recordedRain = 0;
+            recordedThunder = 0;
+            weatherOverridden = false;
+        }
+
+        rewind = plan;
+        currentTick = plan.boundary.tick;
+        try {
+            stream.readTickFrom(currentTick, plan.boundary.position, this::handleRecord);
+        } catch (IOException e) {
+            FlashbackNH.LOG.error("Failed to read tick {}", currentTick, e);
+        }
+        return true;
+    }
+
+    /** Takes effect at once, unlike the removal a packet asks for, which waits for the next world tick. */
+    private void removeReplayedEntities(WorldClient world) {
+        AccessorWorldClient access = (AccessorWorldClient) world;
+        for (Object o : new ArrayList<Object>(access.flashbacknh$getEntityList())) {
+            Entity e = (Entity) o;
+            if (e == mc.thePlayer) continue;
+            if (world.removeEntityFromWorld(e.getEntityId()) != e) world.removeEntity(e);
+        }
+        for (Object o : new ArrayList<Object>(world.loadedEntityList)) {
+            Entity e = (Entity) o;
+            if (e != mc.thePlayer) e.setDead();
+        }
+        access.flashbacknh$getEntitySpawnQueue()
+            .clear();
+        world.weatherEffects.clear();
+        world.removeAllEntities();
     }
 
     public void seekRelative(int ticks) {
@@ -486,6 +610,9 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private void fastForwardTo(int target) {
         target = Math.min(target, getTotalTicks() - 1);
         int delivered = 0;
+        ReplayIndex.Boundary boundary = stream.getIndex()
+            .boundaryAt(target);
+        replacedBefore = boundary != null && boundary.tick > currentTick ? boundary.position : 0;
         fastForwarding = true;
         try {
             while (currentTick < target) {
@@ -495,6 +622,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             }
         } finally {
             fastForwarding = false;
+            replacedBefore = 0;
         }
         connection.processAll();
         settleEntities();
@@ -532,6 +660,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private void settleEntities() {
         WorldClient world = mc.theWorld;
         if (world == null) return;
+        // removed entities stay until the next world tick, which may be a long time away in a paused replay
+        world.removeAllEntities();
         for (Object o : new ArrayList<>(world.loadedEntityList)) {
             Entity e = (Entity) o;
             if (e instanceof CameraEntity) continue;
@@ -584,8 +714,11 @@ public final class ReplayHandler implements PacketFilter.Listener {
             deliveredBytes = 0;
             connection.processAll();
         }
+        if (rec.position < replacedBefore && isInWorldOnly(rec)) return;
         switch (rec.type) {
             case ReplayFormat.REC_PACKET: {
+                if (fastForwarding && isOnlyAnEffect(rec.data)) return;
+                if (rewind != null && !neededForRewind(rec.data)) return;
                 byte[] data = PacketFilter.filter(rec.data, this);
                 if (data == null) return;
                 int id = PacketCodec.peekId(data);
@@ -622,7 +755,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
                 return;
             }
             case ReplayFormat.REC_CLEAR_WORLD:
-                connection.deliver(new ReplayConnection.ActionPacket(this::clearWorld));
+                // what a rewind starts from, and the point of a rewind is to keep the world
+                if (rewind == null) connection.deliver(new ReplayConnection.ActionPacket(this::clearWorld));
                 return;
             case ReplayFormat.REC_HOTBAR: {
                 final byte[] d = rec.data;
@@ -632,6 +766,60 @@ public final class ReplayHandler implements PacketFilter.Listener {
             default:
                 // unknown record type from a newer version: ignore
         }
+    }
+
+    /**
+     * Whether a record only affects what goes away with the world. Other packets stay even in a world about to be
+     * replaced, as the join game packet does and as mods may store something outside the world.
+     */
+    private static boolean isInWorldOnly(ReplayStream.Record rec) {
+        switch (rec.type) {
+            case ReplayFormat.REC_LOCAL_MOVE:
+            case ReplayFormat.REC_TILE_NBT:
+            case ReplayFormat.REC_TILE_BATCH:
+                return true;
+            case ReplayFormat.REC_PACKET:
+                int id = PacketCodec.peekId(rec.data);
+                return id == 0x04 || (id >= 0x0A && id <= 0x20)
+                    || (id >= 0x21 && id <= 0x2A)
+                    || id == 0x2C
+                    || (id >= 0x33 && id <= 0x35);
+            default:
+                return false;
+        }
+    }
+
+    /** Sounds and particles of ticks that are skipped over. A jukebox stays: its record plays on past that tick. */
+    private static boolean isOnlyAnEffect(byte[] data) {
+        int id = PacketCodec.peekId(data);
+        if (id == 0x29 || id == 0x2A) return true;
+        return id == 0x28 && readInt(data, PacketCodec.idLength(data)) != EFFECT_RECORD;
+    }
+
+    /** Whether a packet is needed to get back to an earlier tick when {@link #rewind} keeps the world. */
+    private boolean neededForRewind(byte[] data) {
+        int id = PacketCodec.peekId(data);
+        if (id == 0x01 || id == 0x07) return false;
+        if (PacketChunks.changesChunks(id)) {
+            long[] chunks = PacketChunks.of(data);
+            if (chunks == null) return true;
+            return chunks.length > 0 && rewind.chunks.contains(chunks[0]);
+        }
+        // a piston changes blocks on its own, and those are the same already in chunks that are kept
+        if (id == 0x24 && isPistonEvent(data)) {
+            int off = PacketCodec.idLength(data);
+            return rewind.chunks.contains(ReplayIndex.chunkKey(readInt(data, off) >> 4, readInt(data, off + 6) >> 4));
+        }
+        return true;
+    }
+
+    private static boolean isPistonEvent(byte[] data) {
+        int off = PacketCodec.idLength(data) + 12;
+        if (data.length <= off) return false;
+        int value = data[off] & 0x7F;
+        if ((data[off] & 0x80) != 0 && data.length > off + 1) value |= (data[off + 1] & 0x7F) << 7;
+        int blockId = value & 4095;
+        return blockId == Block.getIdFromBlock(Blocks.piston) || blockId == Block.getIdFromBlock(Blocks.sticky_piston);
     }
 
     private void trackTime(byte[] data) {
@@ -703,13 +891,33 @@ public final class ReplayHandler implements PacketFilter.Listener {
         final WorldClient world = mc.theWorld;
         if (world == null) return;
         try {
+            final ReplayIndex.Rewind plan = rewind;
             TileBatch.read(d, new TileBatch.Sink() {
+
+                private boolean chunkStarted, chunkKept, mayLookDifferent;
+
+                @Override
+                public boolean wants(int x, int y, int z) {
+                    if (!chunkStarted) {
+                        chunkStarted = true;
+                        chunkKept = plan != null && !plan.chunks.contains(ReplayIndex.chunkKey(x >> 4, z >> 4));
+                    }
+                    if (!chunkKept) return true;
+                    // These are never sent anything after a snapshot and there can be millions of them. Their state and
+                    // how they look are the same as the last time, and building all chunks again takes a long time.
+                    TileEntity te = world.getTileEntity(x, y, z);
+                    return te != null && (te.canUpdate() || !bulkTileClasses.contains(te.getClass()));
+                }
 
                 @Override
                 public void tile(int x, int y, int z, NBTTagCompound tag) {
                     try {
                         TileEntity te = world.getTileEntity(x, y, z);
-                        if (te != null) te.readFromNBT(tag);
+                        if (te != null) {
+                            te.readFromNBT(tag);
+                            if (plan == null) countTile(te);
+                            else mayLookDifferent = true;
+                        }
                     } catch (Throwable t) {
                         FlashbackNH.LOG.debug("Unable to restore tile entity state", t);
                     }
@@ -717,6 +925,10 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
                 @Override
                 public void chunkDone(int chunkX, int chunkZ, int minY, int maxY) {
+                    boolean mark = !chunkKept || mayLookDifferent;
+                    chunkStarted = false;
+                    mayLookDifferent = false;
+                    if (!mark) return;
                     world.markBlockRangeForRenderUpdate(
                         chunkX << 4,
                         minY,
@@ -731,11 +943,19 @@ public final class ReplayHandler implements PacketFilter.Listener {
         }
     }
 
+    /** The same rule as for recording, as this is about what the recording left out of its packets. */
+    private void countTile(TileEntity te) {
+        if (te.canUpdate()) return;
+        int[] count = tileClassCounts.computeIfAbsent(te.getClass(), c -> new int[1]);
+        if (++count[0] >= WorldSnapshot.BULK_TILE_COUNT) bulkTileClasses.add(te.getClass());
+    }
+
     /**
      * Resets the client world, the way a dimension change does. Chunks and entities cannot be cleared in place: their
      * removal only takes effect on the next tick, after the snapshot that follows this record re-added them.
      */
     private void clearWorld() {
+        tileClassCounts.clear();
         WorldClient old = mc.theWorld;
         if (old == null || mc.thePlayer == null) return;
         if (mc.thePlayer instanceof CameraEntity) ((CameraEntity) mc.thePlayer).remember();
@@ -999,6 +1219,12 @@ public final class ReplayHandler implements PacketFilter.Listener {
         String key = entityKey(entity);
         if (!editor.visuals.hiddenEntities.remove(key)) editor.visuals.hiddenEntities.add(key);
         markEditorDirty();
+    }
+
+    /** Called when a block of a chunk really changed. */
+    public static void onChunkChanged(int chunkX, int chunkZ) {
+        ReplayHandler h = active;
+        if (h != null) h.chunkChanges.merge(ReplayIndex.chunkKey(chunkX, chunkZ), h.currentTick, Math::max);
     }
 
     /** Called when the client world disappears without us closing it (e.g. a crash in a mod). */

@@ -187,8 +187,9 @@ Minecraft 1.7.10 and Forge are very different from modern Fabric, so some things
   editor.
 - Video export uses an external ffmpeg instead of bundled native libraries.
 - The editor UI is built with Minecraft's own GUI system instead of ImGui.
-- Jumping backwards replays the recording from its start (packets are applied without rendering, so this is usually
-  quick, but very long recordings take a few seconds). Forward jumps are always fast.
+- Jumping backwards keeps the world and restores only what differs, by replaying the recording from its last world
+  snapshot before that point, without rendering. The further that point is from the snapshot, the longer this takes.
+  Going back past a pause or dimension change in the recording reloads the world instead, which is slower.
 - Replays are not compatible with Flashback's file format (the network protocol is completely different).
 - Standing in a nether portal closes any open screen in vanilla, including the save screen. The recording is not lost:
   it can be recovered from the *Recover* button in the replay list.

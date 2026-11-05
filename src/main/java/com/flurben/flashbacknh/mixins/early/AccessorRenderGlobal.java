@@ -1,6 +1,7 @@
 package com.flurben.flashbacknh.mixins.early;
 
 import java.util.List;
+import java.util.Map;
 
 import net.minecraft.client.renderer.RenderGlobal;
 
@@ -12,4 +13,7 @@ public interface AccessorRenderGlobal {
 
     @Accessor("worldRenderersToUpdate")
     List<?> flashbacknh$getWorldRenderersToUpdate();
+
+    @Accessor("damagedBlocks")
+    Map<?, ?> flashbacknh$getDamagedBlocks();
 }

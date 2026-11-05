@@ -73,7 +73,7 @@ public final class WorldSnapshot {
     private static final int CHUNK_SEARCH_RADIUS = 40;
 
     /** A class with this many tile entities is what makes reading them slow, see {@link #readTiles}. */
-    private static final int BULK_TILE_COUNT = 2048;
+    public static final int BULK_TILE_COUNT = 2048;
 
     private static final ExecutorService WORKERS = createWorkers();
 
