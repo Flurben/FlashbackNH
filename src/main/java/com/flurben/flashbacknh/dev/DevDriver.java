@@ -32,6 +32,7 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
 import com.flurben.flashbacknh.FlashbackNH;
+import com.flurben.flashbacknh.editor.CameraRig;
 import com.flurben.flashbacknh.editor.Interpolation;
 import com.flurben.flashbacknh.editor.TrackType;
 import com.flurben.flashbacknh.editor.Visuals;
@@ -427,6 +428,31 @@ public final class DevDriver {
                     log("shader reload failed: " + e);
                 }
                 break;
+            case "devcape":
+                devCape(a[1]);
+                break;
+            case "capes":
+                logCapes();
+                break;
+            case "rig":
+                rig(h, a);
+                break;
+            case "rigstate":
+                rigState(h);
+                break;
+            case "editorinfo":
+                log(
+                    String.format(
+                        "editorinfo tick=%d speed=%.3f rain=%.3f thunder=%.3f fovkeys=%s screen=%dx%d",
+                        h.getCurrentTick(),
+                        h.getSpeed(),
+                        mc.theWorld.getRainStrength(1.0F),
+                        mc.theWorld.getWeightedThunderStrength(1.0F),
+                        h.editor.track(TrackType.FOV).keyframes.isEmpty() ? "-"
+                            : String.valueOf(h.editor.track(TrackType.FOV).keyframes.get(0).values[0]),
+                        mc.currentScreen == null ? 0 : mc.currentScreen.width,
+                        mc.currentScreen == null ? 0 : mc.currentScreen.height));
+                break;
             case "halt":
                 log("halting the JVM to simulate a crash");
                 Runtime.getRuntime()
@@ -440,10 +466,129 @@ public final class DevDriver {
         }
     }
 
+    /**
+     * Gives the local player a cape the way GregTech or Galacticraft do, through their mixin's setter. "dynamic" makes
+     * a texture that only exists on the graphics card, like a downloaded cape.
+     */
+    private void devCape(String name) throws Exception {
+        net.minecraft.util.ResourceLocation location;
+        if (name.equals("dynamic")) {
+            location = new net.minecraft.util.ResourceLocation("fbnhdev", "dynamic_cape");
+            BufferedImage image = new BufferedImage(64, 32, BufferedImage.TYPE_INT_ARGB);
+            for (int y = 0; y < 32; y++) for (int x = 0; x < 64; x++) image.setRGB(x, y, 0xFFFF00FF);
+            mc.getTextureManager()
+                .loadTexture(location, new net.minecraft.client.renderer.texture.DynamicTexture(image));
+        } else {
+            location = new net.minecraft.util.ResourceLocation(name);
+        }
+        for (String setter : new String[] { "gt5u$setCape", "gc$setCape" }) {
+            try {
+                Method m = mc.thePlayer.getClass()
+                    .getMethod(setter, net.minecraft.util.ResourceLocation.class);
+                m.invoke(mc.thePlayer, location);
+                log("cape set with " + setter + ": " + location);
+                return;
+            } catch (NoSuchMethodException ignored) {}
+        }
+        log("no mod cape setter found");
+    }
+
+    private void logCapes() {
+        for (Object o : mc.theWorld.playerEntities) {
+            if (!(o instanceof net.minecraft.client.entity.AbstractClientPlayer) || o instanceof CameraEntity) continue;
+            net.minecraft.client.entity.AbstractClientPlayer p = (net.minecraft.client.entity.AbstractClientPlayer) o;
+            log(
+                "cape " + p.getCommandSenderName()
+                    + " "
+                    + p.getUniqueID()
+                    + " has="
+                    + p.func_152122_n()
+                    + " location="
+                    + p.getLocationCape());
+        }
+    }
+
+    private Entity firstPlayer() {
+        for (Object o : mc.theWorld.loadedEntityList) {
+            Entity e = (Entity) o;
+            if (e instanceof EntityPlayer && !(e instanceof CameraEntity)) return e;
+        }
+        return null;
+    }
+
+    /** rig <orbit|follow|look_at> <start> <end> [radius or offset] */
+    private void rig(ReplayHandler h, String[] a) {
+        if (a[1].equals("clear")) {
+            h.editor.rigs.clear();
+            return;
+        }
+        Entity target = firstPlayer();
+        if (target == null) {
+            log("no player for a rig");
+            return;
+        }
+        CameraRig r = new CameraRig();
+        r.type = CameraRig.Type.valueOf(a[1].toUpperCase());
+        r.target = ReplayHandler.entityKey(target);
+        r.targetName = target.getCommandSenderName();
+        r.start = Integer.parseInt(a[2]);
+        r.end = Integer.parseInt(a[3]);
+        boolean fitted = h.fitRigToCamera(r);
+        if (a.length > 4) {
+            r.radius = Double.parseDouble(a[4]);
+            r.offsetForward = -Double.parseDouble(a[4]);
+            r.offsetRight = 0;
+            r.offsetUp = 2;
+        }
+        r.smoothing = 0;
+        h.editor.rigs.add(r);
+        log("rig " + r.type + " on " + r.targetName + " fitted=" + fitted + " radius=" + r.radius);
+    }
+
+    private void rigState(ReplayHandler h) {
+        CameraEntity cam = h.getCamera();
+        Entity target = firstPlayer();
+        CameraRig rig = h.rigAt(h.getReplayTime());
+        if (cam == null || target == null) {
+            log("rigstate: no camera or target");
+            return;
+        }
+        double feetY = target.posY - target.yOffset;
+        double dx = cam.posX - target.posX, dz = cam.posZ - target.posZ;
+        double[] look = CameraRig
+            .lookAt(cam.posX, cam.posY, cam.posZ, target.posX, feetY + target.height * 0.85, target.posZ);
+        log(
+            String.format(
+                "rigstate tick=%d rig=%s cam=%.2f,%.2f,%.2f yaw=%.1f pitch=%.1f target=%.2f,%.2f,%.2f horiz=%.2f up=%.2f lookErr=%.2f,%.2f",
+                h.getCurrentTick(),
+                rig == null ? "none" : rig.type,
+                cam.posX,
+                cam.posY,
+                cam.posZ,
+                cam.rotationYaw,
+                cam.rotationPitch,
+                target.posX,
+                feetY,
+                target.posZ,
+                Math.sqrt(dx * dx + dz * dz),
+                cam.posY - feetY,
+                net.minecraft.util.MathHelper.wrapAngleTo180_double(cam.rotationYaw - look[0]),
+                cam.rotationPitch - look[1]));
+    }
+
     private File replayFile(String name) {
         File[] files = RecordingManager.replaysDir()
             .listFiles();
         if (files == null || files.length == 0) throw new IllegalStateException("No replays");
+        if (name.startsWith("named")) {
+            // by name, newest first: names end in the time the recording was made, which saving edits does not change
+            File[] sorted = files.clone();
+            Arrays.sort(
+                sorted,
+                (x, y) -> y.getName()
+                    .compareTo(x.getName()));
+            return sorted[Math.min(Integer.parseInt(name.substring(5)), sorted.length - 1)];
+        }
         if (name.equals("newest")) {
             File best = files[0];
             for (File f : files) if (f.lastModified() > best.lastModified()) best = f;
@@ -550,6 +695,16 @@ public final class DevDriver {
             case "click":
                 click(s, Integer.parseInt(a[2]), Integer.parseInt(a[3]), a.length > 4 ? Integer.parseInt(a[4]) : 0);
                 break;
+            case "clickb": {
+                // negative coordinates count from the right and bottom edges, for the editor's panels and timeline
+                int cx = Integer.parseInt(a[2]), cy = Integer.parseInt(a[3]);
+                click(
+                    s,
+                    cx < 0 ? s.width + cx : cx,
+                    cy < 0 ? s.height + cy : cy,
+                    a.length > 4 ? Integer.parseInt(a[4]) : 0);
+                break;
+            }
             case "drag": {
                 // drag x y for a button that is already held
                 Method m = ReflectionHelper

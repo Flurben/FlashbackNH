@@ -52,6 +52,7 @@ public final class Recorder {
     private final RecordQueue queue;
     private final ReplayMeta meta = new ReplayMeta();
     private final LocalPlayerRecorder localPlayer;
+    private final CapeRecorder capes = new CapeRecorder();
     private final Object lock = new Object();
 
     private final List<byte[]> preStartBuffer = new ArrayList<>();
@@ -303,6 +304,7 @@ public final class Recorder {
         if (paused || mc.isGamePaused() || mc.theWorld == null) return;
         try {
             localPlayer.tick(mc);
+            capes.tick(mc);
             synchronized (lock) {
                 queue.addTick();
             }
@@ -371,6 +373,7 @@ public final class Recorder {
 
     public void saveMeta() {
         lastMetaSave = System.currentTimeMillis();
+        capes.save(workDir);
         String json;
         synchronized (meta) {
             meta.durationTicks = queue.getTicks();

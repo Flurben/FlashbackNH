@@ -13,7 +13,9 @@ public enum TrackType {
     /** playback speed multiplier, used by export and playback */
     SPEED("Speed", 0xFF60D080, new String[] { "Speed" }, new boolean[] { false }),
     /** camera shake strength (0 = none) */
-    SHAKE("Camera Shake", 0xFFD060D0, new String[] { "Strength" }, new boolean[] { false });
+    SHAKE("Camera Shake", 0xFFD060D0, new String[] { "Strength" }, new boolean[] { false }),
+    /** rain and thunder strength, each 0 to 1 (thunder only shows while it rains) */
+    WEATHER("Weather", 0xFF70A0C0, new String[] { "Rain", "Thunder" }, new boolean[] { false, false });
 
     public final String displayName;
     public final int color;

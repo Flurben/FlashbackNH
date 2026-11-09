@@ -26,6 +26,9 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
 - Up to four marker keybinds; dimension changes are marked automatically.
 - Crash safe: recordings are written continuously and can be recovered after a crash.
 - The block/item id mapping (which differs per world in 1.7.10) is stored and restored for playback.
+- Capes from mods (GregTech, Galacticraft, Galaxy Space and others that change the player's cape texture) are recorded
+  with each player and shown in the replay, even though the mod packets or downloads that gave them out are not
+  replayed. Capes that only exist as a download are stored in the replay as an image.
 
 ### Replay viewer & editor
 - Free camera (hold right mouse over the world, WASD/Space/Shift, scroll for speed, Ctrl to boost) with optional
@@ -39,8 +42,19 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
   - **Time of Day**
   - **Speed** (playback/export speed, for speed ramps and timelapses)
   - **Camera Shake**
+  - **Weather** (rain and thunder strength, 0 to 1)
 - Keyframe editing: select, multi-select, drag, copy/paste, delete, per-keyframe interpolation, numeric inspector,
   "set to current camera", camera path preview in the world.
+- Camera presets that follow a moving player or mob while the replay plays, without keyframes:
+  - **Orbit** circles the target at a set radius, height and speed.
+  - **Follow** moves with the target at a set offset, which can turn with the target's heading.
+  - **Look At** stays in one place and turns to keep the target in view.
+
+  Each preset covers a range of ticks on the camera track, starts from where the camera is when you make it, can
+  smooth out the target's movement, and blends into the camera keyframes at both ends. They show in exports.
+- Number inputs: drag a number sideways or click it to type a value. Values with a natural range (FOV, time of day,
+  roll, pitch, weather, shake, preset radius and angles) use sliders; double-click or right-click a slider to type.
+  Playback speed and flying speed can be typed in too.
 - Player list: spectate any player (first person, including the recorder's HUD), hide/show players, teleport the
   camera to them; spectate nearby mobs.
 - Visuals: toggle chat, scoreboard, player list, boss bar, entities, players, particles, sky, clouds and nametags;
@@ -129,6 +143,10 @@ results read from screenshots, exported files and logs.
 - Distant Horizons, singleplayer overworld: LODs at replay open, after seeking both ways, in an MP4 export, and live
   again afterwards. A checksum of the real LOD database did not change between opening and exiting the replay. The same
   with Complementary Reimagined r5.7.1 and r5.9.3, the latter also with exports at the window size.
+- 0.2.0 features: a GregTech cape (given the way GregTech gives it) and a downloaded cape on the recording player in
+  replays and an MP4 export; weather keyframes (rain and thunder strength in between keyframes); orbit and follow
+  presets during playback (orbit radius within 0.02 blocks, camera aimed at the target) and in an MP4 export; the
+  presets panel and its timeline bars; typing into a number box and into a slider.
 - GregTech: machine hulls, basic machines, wires and pipes in replays and exports. Live and replayed views match under
   shaders.
 - No crashes and no failed replay packets in the final runs.
@@ -137,6 +155,8 @@ results read from screenshots, exported files and logs.
 
 - Clicks with a real mouse and keyboard. The harness sends input to the screens directly, so holding the right mouse
   button to fly and the Ctrl shortcuts themselves have not been exercised, although the actions behind them have.
+- Dragging number boxes and sliders with a real mouse (typing into them was tested), Look At presets, presets on
+  mobs, and capes of other players on a server.
 - Export formats other than MP4 and PNG, cancelling an export with ESC, and other shader packs.
 - Long recordings, large bases, public servers and other versions of the pack.
 - Distant Horizons on servers, across dimension changes, with other DH or Angelica versions, or with large databases.

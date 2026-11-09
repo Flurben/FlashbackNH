@@ -24,6 +24,11 @@ public final class CameraController {
         return Config.cameraBaseSpeed * speedMultiplier;
     }
 
+    /** Sets the flying speed in blocks per second. */
+    public void setSpeed(float blocksPerSecond) {
+        speedMultiplier = MathHelper.clamp_float(blocksPerSecond / Math.max(0.01f, Config.cameraBaseSpeed), 0.02f, 50f);
+    }
+
     public void adjustSpeed(int wheelDelta) {
         if (wheelDelta == 0) return;
         float factor = wheelDelta > 0 ? 1.15f : 1 / 1.15f;

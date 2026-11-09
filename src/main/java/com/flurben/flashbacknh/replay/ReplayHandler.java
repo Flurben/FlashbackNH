@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.entity.EntityOtherPlayerMP;
 import net.minecraft.client.gui.GuiDownloadTerrain;
 import net.minecraft.client.gui.GuiMainMenu;
@@ -31,6 +32,7 @@ import net.minecraft.network.Packet;
 import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.MathHelper;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.Timer;
 import net.minecraft.world.WorldSettings;
 import net.minecraft.world.chunk.EmptyChunk;
@@ -39,10 +41,12 @@ import org.apache.commons.io.FileUtils;
 
 import com.flurben.flashbacknh.FlashbackNH;
 import com.flurben.flashbacknh.compat.DistantHorizonsCompat;
+import com.flurben.flashbacknh.editor.CameraRig;
 import com.flurben.flashbacknh.editor.EditorState;
 import com.flurben.flashbacknh.editor.KeyframeTrack;
 import com.flurben.flashbacknh.editor.TrackType;
 import com.flurben.flashbacknh.editor.Visuals;
+import com.flurben.flashbacknh.format.CapeData;
 import com.flurben.flashbacknh.format.PacketChunks;
 import com.flurben.flashbacknh.format.RegistrySnapshot;
 import com.flurben.flashbacknh.format.ReplayArchive;
@@ -162,6 +166,14 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private int decodeFailures;
 
     public final CameraController cameraController = new CameraController();
+    private ReplayCapes capes;
+
+    /** Whether camera presets move the camera while paused, so they can be seen while editing them. */
+    private boolean rigPreview;
+    /** The smoothed target of the camera preset in use: x, y, z of its feet, heading, height. */
+    private double[] rigTarget;
+    private CameraRig rigTargetOf;
+    private double rigTargetTime;
 
     private ReplayHandler(File archive, ReplayMeta meta, File streamFile, ReplayStream stream,
         RegistrySnapshot registry, EditorState editor) {
@@ -207,6 +219,11 @@ public final class ReplayHandler implements PacketFilter.Listener {
             : EditorState.createDefault();
 
         ReplayHandler handler = new ReplayHandler(archive, meta, streamFile, stream, registry, editor);
+        byte[] capeJson = ReplayArchive.readEntry(archive, ReplayFormat.ENTRY_CAPES);
+        if (capeJson != null) {
+            ReplayCapes capes = new ReplayCapes(CapeData.fromJson(new String(capeJson, StandardCharsets.UTF_8)));
+            if (!capes.isEmpty()) handler.capes = capes;
+        }
         if (registry != null) {
             List<String> missing = registry.inject();
             if (missing != null && !missing.isEmpty()) {
@@ -258,6 +275,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             FlashbackNH.LOG.error("Error while closing replay world", t);
         }
         active = null;
+        if (capes != null) capes.release();
         DistantHorizonsCompat.exitReplay();
         RegistrySnapshot.revert();
         VisualsApplier.restore();
@@ -1085,9 +1103,30 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
         // Camera path
         KeyframeTrack camTrack = editor.track(TrackType.CAMERA);
-        boolean followPath = spectatingId == Integer.MIN_VALUE && camTrack.isActive()
-            && (clockDriver != null || (applyKeyframes && !paused));
-        if (followPath) {
+        boolean driving = spectatingId == Integer.MIN_VALUE && (clockDriver != null || (applyKeyframes && !paused));
+        boolean followPath = driving && camTrack.isActive();
+        CameraRig rig = spectatingId == Integer.MIN_VALUE && (driving || (rigPreview && applyKeyframes)) ? rigAt(time)
+            : null;
+        double[] rigCamera = rig == null ? null : evaluateRig(rig, time, partialTicks);
+        if (rigCamera != null) {
+            double weight = rig.weight(time);
+            if (camTrack.isActive() && weight < 1) {
+                double[] path = camTrack.evaluate(time);
+                for (int i = 0; i < 6; i++) {
+                    double from = path[i], to = rigCamera[i];
+                    if (i >= 3) to = from + MathHelper.wrapAngleTo180_double(to - from);
+                    rigCamera[i] = from + (to - from) * weight;
+                }
+            }
+            camera.setCameraPosition(
+                rigCamera[0],
+                rigCamera[1],
+                rigCamera[2],
+                (float) rigCamera[3],
+                (float) rigCamera[4]);
+            currentRoll = (float) rigCamera[5];
+            cameraController.reset();
+        } else if (followPath) {
             double[] v = camTrack.evaluate(time);
             camera.setCameraPosition(v[0], v[1], v[2], (float) v[3], (float) v[4]);
             currentRoll = (float) v[5];
@@ -1147,8 +1186,14 @@ public final class ReplayHandler implements PacketFilter.Listener {
         }
 
         // Weather
+        KeyframeTrack weatherTrack = editor.track(TrackType.WEATHER);
         Visuals.Weather weather = editor.visuals.weather;
-        if (weather != Visuals.Weather.RECORDED) {
+        if (weatherTrack.isActive() && (clockDriver != null || applyKeyframes)) {
+            double[] w = weatherTrack.evaluate(time);
+            mc.theWorld.setRainStrength((float) MathHelper.clamp_double(w[0], 0, 1));
+            mc.theWorld.setThunderStrength((float) MathHelper.clamp_double(w[1], 0, 1));
+            weatherOverridden = true;
+        } else if (weather != Visuals.Weather.RECORDED) {
             float rain = weather == Visuals.Weather.CLEAR ? 0 : 1;
             float thunder = weather == Visuals.Weather.THUNDER ? 1 : 0;
             mc.theWorld.setRainStrength(rain);
@@ -1225,6 +1270,137 @@ public final class ReplayHandler implements PacketFilter.Listener {
     public static void onChunkChanged(int chunkX, int chunkZ) {
         ReplayHandler h = active;
         if (h != null) h.chunkChanges.merge(ReplayIndex.chunkKey(chunkX, chunkZ), h.currentTick, Math::max);
+    }
+
+    /** The camera preset in use at a tick: the latest one to start that covers it. */
+    public CameraRig rigAt(double tick) {
+        CameraRig found = null;
+        for (CameraRig r : editor.rigs) {
+            if (r.covers(tick) && (found == null || r.start >= found.start)) found = r;
+        }
+        return found;
+    }
+
+    public void setRigPreview(boolean preview) {
+        rigPreview = preview;
+    }
+
+    /** The entity a camera preset follows, or null while it is not in the world. */
+    public Entity findEntity(String key) {
+        if (mc.theWorld == null || key == null || key.isEmpty()) return null;
+        if (key.charAt(0) == '#') {
+            try {
+                return mc.theWorld.getEntityByID(Integer.parseInt(key.substring(1)));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        try {
+            return mc.theWorld.func_152378_a(java.util.UUID.fromString(key));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** The target's feet, heading and height at this frame: x, y, z, yaw, height. */
+    private static double[] targetPose(Entity e, float partialTicks) {
+        double yaw = e.prevRotationYaw
+            + MathHelper.wrapAngleTo180_float(e.rotationYaw - e.prevRotationYaw) * partialTicks;
+        if (e instanceof EntityLivingBase) {
+            EntityLivingBase l = (EntityLivingBase) e;
+            yaw = l.prevRenderYawOffset
+                + MathHelper.wrapAngleTo180_float(l.renderYawOffset - l.prevRenderYawOffset) * partialTicks;
+        }
+        return new double[] { e.lastTickPosX + (e.posX - e.lastTickPosX) * partialTicks,
+            e.lastTickPosY + (e.posY - e.lastTickPosY) * partialTicks - e.yOffset,
+            e.lastTickPosZ + (e.posZ - e.lastTickPosZ) * partialTicks, yaw, e.height };
+    }
+
+    /** The camera of a preset at a time, or null when its target was never seen. */
+    private double[] evaluateRig(CameraRig rig, double time, float partialTicks) {
+        Entity e = findEntity(rig.target);
+        double[] pose = e != null && !e.isDead ? targetPose(e, partialTicks) : null;
+        double dt = (time - rigTargetTime) / 20.0;
+        if (rigTargetOf != rig || rigTarget == null || dt < 0 || dt > 2) {
+            // a new preset, or a jump in time: start from where the target is now
+            if (pose != null) rigTarget = pose;
+            else if (rigTargetOf != rig) rigTarget = null;
+        } else if (pose != null) {
+            double a = rig.smoothing <= 0 ? 1 : 1 - Math.exp(-dt / rig.smoothing);
+            for (int i = 0; i < 5; i++) {
+                double delta = pose[i] - rigTarget[i];
+                if (i == 3) delta = MathHelper.wrapAngleTo180_double(delta);
+                rigTarget[i] += delta * a;
+            }
+        }
+        rigTargetOf = rig;
+        rigTargetTime = time;
+        if (rigTarget == null) return null;
+        return rig.evaluate(time, rigTarget[0], rigTarget[1], rigTarget[2], rigTarget[3], rigTarget[4]);
+    }
+
+    /**
+     * Sets a preset up so that it starts with the camera where it is now, looking at its target. Returns false when
+     * the target is not in the world.
+     */
+    public boolean fitRigToCamera(CameraRig rig) {
+        Entity e = findEntity(rig.target);
+        CameraEntity camera = getCamera();
+        if (e == null || camera == null) return false;
+        double[] t = targetPose(e, 1.0F);
+        double camX = camera.posX, camY = camera.posY, camZ = camera.posZ;
+        float camYaw = camera.rotationYaw, camPitch = camera.rotationPitch;
+        double dx = camX - t[0], dy = camY - t[1], dz = camZ - t[2];
+        if (dx * dx + dy * dy + dz * dz < 1) {
+            // the camera is on the target (it was spectating it): start a little behind and above it instead
+            double h = Math.toRadians(t[3]);
+            dx = Math.sin(h) * 5;
+            dy = 2.5;
+            dz = -Math.cos(h) * 5;
+            camX = t[0] + dx;
+            camY = t[1] + dy;
+            camZ = t[2] + dz;
+            double[] look = CameraRig.lookAt(camX, camY, camZ, t[0], t[1] + t[4] * rig.aimHeight, t[2]);
+            camYaw = (float) look[0];
+            camPitch = (float) look[1];
+        }
+        switch (rig.type) {
+            case ORBIT:
+                rig.radius = Math.max(0.5, Math.sqrt(dx * dx + dz * dz));
+                rig.height = dy;
+                rig.startAngle = Math.toDegrees(Math.atan2(-dx, dz));
+                break;
+            case FOLLOW:
+                if (rig.turnWithTarget) {
+                    double h = Math.toRadians(t[3]);
+                    double fx = -Math.sin(h), fz = Math.cos(h);
+                    rig.offsetForward = dx * fx + dz * fz;
+                    rig.offsetRight = dx * -fz + dz * fx;
+                } else {
+                    rig.offsetRight = dx;
+                    rig.offsetForward = dz;
+                }
+                rig.offsetUp = dy;
+                break;
+            default:
+                rig.x = camX;
+                rig.y = camY;
+                rig.z = camZ;
+                break;
+        }
+        rig.yaw = MathHelper
+            .wrapAngleTo180_double(camYaw - (rig.type == CameraRig.Type.FOLLOW && rig.turnWithTarget ? t[3] : 0));
+        rig.pitch = camPitch;
+        rig.roll = editor.visuals.cameraRoll;
+        rigTargetOf = null;
+        return true;
+    }
+
+    /** The cape a player of the replay wore while recording, or null to leave its cape alone. */
+    public static ResourceLocation recordedCape(AbstractClientPlayer player) {
+        ReplayHandler h = active;
+        if (h == null || h.capes == null || player instanceof CameraEntity) return null;
+        return h.capes.capeOf(player.getUniqueID());
     }
 
     /** Called when the client world disappears without us closing it (e.g. a crash in a mod). */

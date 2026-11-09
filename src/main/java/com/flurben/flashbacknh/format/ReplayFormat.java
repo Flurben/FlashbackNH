@@ -11,6 +11,7 @@ package com.flurben.flashbacknh.format;
  * <li>{@code registry.nbt} - the FML block/item id map that was active while recording</li>
  * <li>{@code editor.json} - optional editor state (keyframes, in/out points, visuals)</li>
  * <li>{@code thumbnail.png} - optional</li>
+ * <li>{@code capes.json} - optional, see {@link CapeData}</li>
  * </ul>
  *
  * <p>
@@ -29,6 +30,7 @@ public final class ReplayFormat {
     public static final String ENTRY_REGISTRY = "registry.nbt";
     public static final String ENTRY_EDITOR = "editor.json";
     public static final String ENTRY_THUMBNAIL = "thumbnail.png";
+    public static final String ENTRY_CAPES = "capes.json";
 
     /** End of the current tick. Empty payload. */
     public static final byte REC_TICK = 0;

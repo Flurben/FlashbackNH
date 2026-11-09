@@ -23,6 +23,8 @@ public final class EditorState {
     public ExportSettings export = new ExportSettings();
     /** Markers added in the editor (recording markers live in the metadata). */
     public List<ReplayMeta.Marker> markers = new ArrayList<>();
+    /** Camera path presets that follow a moving target. */
+    public List<CameraRig> rigs = new ArrayList<>();
     /** Timeline zoom: visible range in ticks, and first visible tick. */
     public double zoomTicks = -1;
     public double scrollTick = 0;
@@ -42,6 +44,8 @@ public final class EditorState {
         if (visuals == null) visuals = new Visuals();
         if (export == null) export = new ExportSettings();
         if (markers == null) markers = new ArrayList<>();
+        if (rigs == null) rigs = new ArrayList<>();
+        rigs.removeIf(r -> r == null || r.type == null || r.target == null);
         byType = new EnumMap<>(TrackType.class);
         List<KeyframeTrack> cleaned = new ArrayList<>();
         for (KeyframeTrack t : tracks) {

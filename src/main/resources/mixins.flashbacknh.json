@@ -8,6 +8,7 @@
   "mixins": [],
   "client": [
     "early.AccessorEntityLivingBase",
+    "early.MixinAbstractClientPlayer",
     "early.AccessorEntityOtherPlayerMP",
     "early.AccessorEntityRenderer",
     "early.AccessorMinecraft",

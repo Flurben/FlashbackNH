@@ -16,6 +16,7 @@ import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
 import com.flurben.flashbacknh.Config;
+import com.flurben.flashbacknh.editor.CameraRig;
 import com.flurben.flashbacknh.editor.EditorState;
 import com.flurben.flashbacknh.editor.Interpolation;
 import com.flurben.flashbacknh.editor.Keyframe;
@@ -26,6 +27,7 @@ import com.flurben.flashbacknh.format.ReplayMeta;
 import com.flurben.flashbacknh.replay.CameraEntity;
 import com.flurben.flashbacknh.replay.ReplayHandler;
 import com.flurben.flashbacknh.util.Notifications;
+import com.google.gson.Gson;
 
 /**
  * The replay editor: a transparent overlay over the replay world with a menu bar, a timeline with keyframe tracks and
@@ -47,6 +49,7 @@ public class GuiReplayEditor extends GuiScreen {
         VISUALS,
         INSPECTOR,
         MOVEMENT,
+        PRESETS,
         HELP
     }
 
@@ -65,10 +68,13 @@ public class GuiReplayEditor extends GuiScreen {
     private static final List<Object[]> clipboard = new ArrayList<>();
     private static Panel lastPanel = Panel.NONE;
     private static boolean hideUi;
+    private static boolean previewPresets = true;
+    private static final Gson GSON = new Gson();
 
     private final Ui ui = new Ui();
     private Panel panel = lastPanel;
     private final List<Selection> selection = new ArrayList<>();
+    private CameraRig selectedRig;
     private String openMenu;
     private String justClosedMenu;
     private int menuX;
@@ -218,6 +224,10 @@ public class GuiReplayEditor extends GuiScreen {
     protected void keyTyped(char c, int key) {
         ReplayHandler h = handler();
         if (h == null) return;
+        if (ui.isEditing()) {
+            ui.keyTyped(c, key);
+            return;
+        }
         if (key == Keyboard.KEY_ESCAPE) {
             if (contextItems != null || openMenu != null) {
                 contextItems = null;
@@ -335,6 +345,7 @@ public class GuiReplayEditor extends GuiScreen {
         }
 
         ui.begin(mouseX, mouseY);
+        h.setRigPreview(panel == Panel.PRESETS && previewPresets && !grabbed && !hideUi);
         computeLayout();
         drawGuides(h);
         if (hideUi) {
@@ -466,8 +477,9 @@ public class GuiReplayEditor extends GuiScreen {
         if (ui.button(">|", bx, y, 18, 14, false, "Skip forwards " + Config.skipSeconds + "s"))
             h.seekRelative(Config.skipSeconds * 20);
         bx += 22;
-        ui.text(String.format("%.2fx", h.getSpeed()), bx, y + 3, Ui.TEXT);
-        bx += 36;
+        float speed = (float) ui.number("speed", h.getSpeed(), 0.05, 0.05, 64, "%.2fx", bx, y + 1, 40, 12);
+        if (speed != h.getSpeed()) h.setSpeed(speed);
+        bx += 44;
         int rx = width - 4;
         rx -= 54;
         if (ui.button("Export", rx, y, 52, 14, false, "Export video (Ctrl+E)"))
@@ -564,6 +576,7 @@ public class GuiReplayEditor extends GuiScreen {
                 track.enabled = !track.enabled;
                 h.markEditorDirty();
             }
+            if (type == TrackType.CAMERA) drawRigBars(h, ty);
             // segments
             List<Keyframe> ks = track.keyframes;
             for (int i = 0; i + 1 < ks.size(); i++) {
@@ -676,6 +689,13 @@ public class GuiReplayEditor extends GuiScreen {
                 return true;
             }
             if (x >= tlX && x < tlX + tlW) {
+                if (type == TrackType.CAMERA) {
+                    CameraRig rig = rigBarAt(h, x);
+                    if (rig != null) {
+                        selectedRig = rig;
+                        panel = Panel.PRESETS;
+                    }
+                }
                 if (!isShiftKeyDown()) selection.clear();
                 scrubbing = true;
                 scrubTick = tickAt(x);
@@ -696,6 +716,35 @@ public class GuiReplayEditor extends GuiScreen {
             return true;
         }
         return false;
+    }
+
+    private CameraRig rigBarAt(ReplayHandler h, int x) {
+        CameraRig found = null;
+        for (CameraRig r : h.editor.rigs) {
+            if (x >= xAt(r.start) && x <= xAt(r.end) && (found == null || r.start >= found.start)) found = r;
+        }
+        return found;
+    }
+
+    private void drawRigBars(ReplayHandler h, int ty) {
+        for (CameraRig r : h.editor.rigs) {
+            int a = Math.max(tlX, xAt(r.start));
+            int b = Math.min(tlX + tlW, xAt(r.end));
+            if (b <= a) continue;
+            boolean sel = r == selectedRig && panel == Panel.PRESETS;
+            ui.rect(a, ty + 2, b - a, TRACK_H - 4, sel ? 0x70E0B040 : 0x40E0B040);
+            ui.outline(a, ty + 2, b - a, TRACK_H - 4, sel ? 0xFFFFD060 : 0xA0E0B040);
+            String label = r.type.displayName + ": " + rigTargetName(h, r);
+            if (b - a > 30) ui.text(ui.trim(label, b - a - 4), a + 2, ty + 3, 0xFFFFE8B0);
+            if (ui.hovered(a, ty, b - a, TRACK_H) && ui.tooltip == null) {
+                ui.tooltip = "Camera preset: " + label
+                    + "\n"
+                    + ReplayMeta.formatTicks(r.start)
+                    + " - "
+                    + ReplayMeta.formatTicks(r.end)
+                    + "\nClick to edit";
+            }
+        }
     }
 
     private int xAt(double tick) {
@@ -768,6 +817,13 @@ public class GuiReplayEditor extends GuiScreen {
             case SHAKE:
                 values = new double[] { 1.0 };
                 break;
+            case WEATHER: {
+                float rain = mc.theWorld == null ? 0 : mc.theWorld.getRainStrength(1.0F);
+                float thunder = mc.theWorld == null || rain <= 0 ? 0
+                    : mc.theWorld.getWeightedThunderStrength(1.0F) / rain;
+                values = new double[] { rain, thunder };
+                break;
+            }
             default:
                 return;
         }
@@ -1011,6 +1067,7 @@ public class GuiReplayEditor extends GuiScreen {
                 items.add(check(panel == Panel.VISUALS) + "Visuals");
                 items.add(check(panel == Panel.INSPECTOR) + "Keyframe Inspector");
                 items.add(check(panel == Panel.MOVEMENT) + "Movement");
+                items.add(check(panel == Panel.PRESETS) + "Camera Presets");
                 items.add("Hide UI  (F1)");
                 break;
             case "View":
@@ -1045,7 +1102,7 @@ public class GuiReplayEditor extends GuiScreen {
                 } else if (index == 2) h.exit();
                 break;
             case "Window":
-                Panel[] panels = { Panel.PLAYERS, Panel.VISUALS, Panel.INSPECTOR, Panel.MOVEMENT };
+                Panel[] panels = { Panel.PLAYERS, Panel.VISUALS, Panel.INSPECTOR, Panel.MOVEMENT, Panel.PRESETS };
                 if (index < panels.length) {
                     panel = panel == panels[index] ? Panel.NONE : panels[index];
                     panelScroll = 0;
@@ -1081,7 +1138,8 @@ public class GuiReplayEditor extends GuiScreen {
         int pw = PANEL_W - 12;
         String title = panel == Panel.PLAYERS ? "Player List"
             : panel == Panel.VISUALS ? "Visuals"
-                : panel == Panel.INSPECTOR ? "Keyframe Inspector" : panel == Panel.MOVEMENT ? "Movement" : "Controls";
+                : panel == Panel.INSPECTOR ? "Keyframe Inspector"
+                    : panel == Panel.MOVEMENT ? "Movement" : panel == Panel.PRESETS ? "Camera Presets" : "Controls";
         ui.text(title, px, top + 4, Ui.TEXT);
         if (ui.button("x", x + PANEL_W - 14, top + 2, 11, 11)) {
             panel = Panel.NONE;
@@ -1111,6 +1169,9 @@ public class GuiReplayEditor extends GuiScreen {
                 break;
             case MOVEMENT:
                 y = drawMovement(h, px, y, pw);
+                break;
+            case PRESETS:
+                y = drawPresets(h, px, y, pw);
                 break;
             case HELP:
                 y = drawHelp(px, y, pw);
@@ -1224,30 +1285,38 @@ public class GuiReplayEditor extends GuiScreen {
         v.overrideFov = ui.checkbox("Override FOV", v.overrideFov, x, y, w);
         y += 12;
         if (v.overrideFov) {
-            v.fov = (float) ui.stepper("FOV", v.fov, 1, 1, 170, "%.0f", x + 8, y, w - 8);
+            v.fov = (float) ui.sliderRow("FOV", v.fov, 1, 170, 1, "%.0f", x + 8, y, w - 8);
             y += 13;
         }
         v.overrideTime = ui.checkbox("Override time", v.overrideTime, x, y, w);
         y += 12;
         if (v.overrideTime) {
-            v.time = (int) ui.stepper("Time", v.time, 500, 0, 23999, "%.0f", x + 8, y, w - 8);
+            v.time = (int) Math.round(ui.sliderRow("Time", v.time, 0, 23999, 100, "%.0f", x + 8, y, w - 8));
             y += 13;
         }
-        if (ui.button("Weather: " + cap(v.weather.name()), x, y, w, 12)) {
+        if (ui.button(
+            "Weather: " + cap(v.weather.name()),
+            x,
+            y,
+            w,
+            12,
+            false,
+            "Weather keyframes override this while keys are on")) {
             v.weather = Visuals.Weather.values()[(v.weather.ordinal() + 1) % Visuals.Weather.values().length];
         }
         y += 14;
         v.nightVision = ui.checkbox("Night vision", v.nightVision, x, y, w);
         y += 12;
-        v.cameraRoll = (float) ui.stepper("Camera roll", v.cameraRoll, 1, -180, 180, "%.0f", x, y, w);
+        v.cameraRoll = (float) ui.sliderRow("Camera roll", v.cameraRoll, -180, 180, 1, "%.0f", x, y, w);
         y += 13;
         v.cameraShake = ui.checkbox("Camera shake", v.cameraShake, x, y, w);
         y += 12;
         if (v.cameraShake || h.editor.track(TrackType.SHAKE)
             .isActive()) {
-            v.shakeFrequency = (float) ui.stepper("Frequency", v.shakeFrequency, 0.1, 0.1, 10, "%.1f", x + 8, y, w - 8);
+            v.shakeFrequency = (float) ui
+                .sliderRow("Frequency", v.shakeFrequency, 0.1, 10, 0.1, "%.1f", x + 8, y, w - 8);
             y += 13;
-            v.shakeAmplitude = (float) ui.stepper("Amplitude", v.shakeAmplitude, 0.1, 0, 20, "%.1f", x + 8, y, w - 8);
+            v.shakeAmplitude = (float) ui.sliderRow("Amplitude", v.shakeAmplitude, 0, 20, 0.1, "%.1f", x + 8, y, w - 8);
             y += 13;
         }
         y += 4;
@@ -1325,25 +1394,7 @@ public class GuiReplayEditor extends GuiScreen {
         }
         y += 15;
         for (int c = 0; c < type.channels.length && c < k.values.length; c++) {
-            double step;
-            String fmt;
-            if (type == TrackType.CAMERA) {
-                step = c < 3 ? 0.1 : 1;
-                fmt = c < 3 ? "%.2f" : "%.1f";
-            } else if (type == TrackType.TIME) {
-                step = 100;
-                fmt = "%.0f";
-            } else if (type == TrackType.FOV) {
-                step = 1;
-                fmt = "%.0f";
-            } else {
-                step = 0.05;
-                fmt = "%.2f";
-            }
-            double min = type == TrackType.FOV ? 1
-                : type == TrackType.SPEED ? 0.01 : type == TrackType.SHAKE ? 0 : -1e9;
-            double max = type == TrackType.FOV ? 170 : 1e9;
-            double nv = ui.stepper(type.channels[c], k.values[c], step, min, max, fmt, x, y, w);
+            double nv = channelInput(type, c, k.values[c], x, y, w);
             if (nv != k.values[c]) {
                 k.values[c] = nv;
                 h.markEditorDirty();
@@ -1377,9 +1428,35 @@ public class GuiReplayEditor extends GuiScreen {
         return y;
     }
 
+    /** The input for one value of a keyframe: a slider where the value has a natural range. */
+    private double channelInput(TrackType type, int c, double value, int x, int y, int w) {
+        String name = type.channels[c];
+        switch (type) {
+            case CAMERA:
+                if (c < 3) return ui.numberRow(name, value, 0.1, -3.0e7, 3.0e7, "%.2f", x, y, w);
+                if (c == 4) return ui.sliderRow(name, value, -90, 90, 0.5, "%.1f", x, y, w);
+                if (c == 5) return ui.sliderRow(name, value, -180, 180, 1, "%.0f", x, y, w);
+                return ui.numberRow(name, value, 1, -1.0e6, 1.0e6, "%.1f", x, y, w);
+            case FOV:
+                return ui.sliderRow(name, value, 1, 170, 1, "%.0f", x, y, w);
+            case TIME:
+                // above 24000 runs on into the next days, which a time lapse needs
+                return ui.numberRow(name, value, 100, 0, 1.0e9, "%.0f", x, y, w);
+            case SPEED:
+                return ui.numberRow(name, value, 0.05, 0.01, 64, "%.2fx", x, y, w);
+            case SHAKE:
+                return ui.sliderRow(name, value, 0, 5, 0.05, "%.2f", x, y, w);
+            case WEATHER:
+                return ui.sliderRow(name, value, 0, 1, 0.01, "%.2f", x, y, w);
+            default:
+                return ui.numberRow(name, value, 0.05, -1.0e9, 1.0e9, "%.2f", x, y, w);
+        }
+    }
+
     private int drawMovement(ReplayHandler h, int x, int y, int w) {
-        ui.text(String.format("Flying speed: %.1f", h.cameraController.getSpeed()), x, y, Ui.TEXT);
-        y += 12;
+        float fly = (float) ui.numberRow("Flying speed", h.cameraController.getSpeed(), 0.5, 0.2, 500, "%.1f", x, y, w);
+        if (fly != h.cameraController.getSpeed()) h.cameraController.setSpeed(fly);
+        y += 13;
         if (ui.button("Slower", x, y, (w - 2) / 2, 12)) h.cameraController.adjustSpeed(-1);
         if (ui.button("Faster", x + (w - 2) / 2 + 2, y, (w - 2) / 2, 12)) h.cameraController.adjustSpeed(1);
         y += 16;
@@ -1417,11 +1494,216 @@ public class GuiReplayEditor extends GuiScreen {
         return y;
     }
 
+    private String rigTargetName(ReplayHandler h, CameraRig r) {
+        Entity e = h.findEntity(r.target);
+        if (e != null) return e.getCommandSenderName();
+        return r.targetName == null || r.targetName.isEmpty() ? "?" : r.targetName;
+    }
+
+    /** Opens a menu of players and nearby mobs; the pick becomes the target of a new preset or of an existing one. */
+    private void pickRigTarget(final ReplayHandler h, final CameraRig.Type type, final CameraRig existing) {
+        CameraEntity cam = h.getCamera();
+        if (cam == null || mc.theWorld == null) return;
+        List<Entity> candidates = new ArrayList<>();
+        Entity spectated = h.isSpectating() ? h.getSpectating() : null;
+        if (spectated != null) candidates.add(spectated);
+        for (Object o : mc.theWorld.playerEntities) {
+            if (!(o instanceof CameraEntity) && o != spectated) candidates.add((Entity) o);
+        }
+        List<Entity> mobs = new ArrayList<>();
+        for (Object o : mc.theWorld.loadedEntityList) {
+            Entity e = (Entity) o;
+            if (e instanceof EntityLivingBase && !(e instanceof EntityPlayer)
+                && e != spectated
+                && e.getDistanceSqToEntity(cam) < 64 * 64) mobs.add(e);
+        }
+        mobs.sort((a, b) -> Double.compare(a.getDistanceSqToEntity(cam), b.getDistanceSqToEntity(cam)));
+        for (int i = 0; i < Math.min(12, mobs.size()); i++) candidates.add(mobs.get(i));
+        if (candidates.isEmpty()) {
+            Notifications.show("FlashbackNH", "No players or mobs nearby to follow");
+            return;
+        }
+        List<String> items = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (final Entity e : candidates) {
+            String label = e.getCommandSenderName();
+            if (!(e instanceof EntityPlayer))
+                label += String.format(" (%.0fm)", Math.sqrt(e.getDistanceSqToEntity(cam)));
+            if (e == spectated) label += " (spectating)";
+            items.add(label);
+            actions.add(() -> {
+                CameraRig r = existing;
+                if (r == null) {
+                    r = new CameraRig();
+                    r.type = type;
+                    int total = h.getTotalTicks() - 1;
+                    r.start = h.getCurrentTick();
+                    r.end = Math.min(total, r.start + 200);
+                    if (r.end <= r.start) {
+                        r.start = Math.max(0, total - 200);
+                        r.end = total;
+                    }
+                    h.editor.rigs.add(r);
+                }
+                r.target = ReplayHandler.entityKey(e);
+                r.targetName = e.getCommandSenderName();
+                if (h.isSpectating()) h.stopSpectating();
+                if (existing == null) h.fitRigToCamera(r);
+                selectedRig = r;
+                panel = Panel.PRESETS;
+                h.markEditorDirty();
+            });
+        }
+        showContextMenu(items, actions, ui.mouseX, ui.mouseY);
+    }
+
+    private int drawPresets(ReplayHandler h, int x, int y, int w) {
+        int bw = (w - 4) / 3;
+        if (ui.button("+ Orbit", x, y, bw, 12, false, "Circle around a player or mob"))
+            pickRigTarget(h, CameraRig.Type.ORBIT, null);
+        if (ui.button("+ Follow", x + bw + 2, y, bw, 12, false, "Move along with a player or mob"))
+            pickRigTarget(h, CameraRig.Type.FOLLOW, null);
+        if (ui.button(
+            "+ Look at",
+            x + 2 * (bw + 2),
+            y,
+            w - 2 * (bw + 2),
+            12,
+            false,
+            "Stay in place and keep a player or mob in view")) pickRigTarget(h, CameraRig.Type.LOOK_AT, null);
+        y += 15;
+        previewPresets = ui.checkbox("Preview while paused", previewPresets, x, y, w);
+        y += 14;
+        List<CameraRig> rigs = h.editor.rigs;
+        if (rigs.isEmpty()) {
+            String[] lines = { "Presets move the camera with", "a player or mob as the replay",
+                "plays. In their range they", "replace the camera keyframes", "and blend into them at the ends.",
+                "Keys must be on to use them." };
+            for (String l : lines) {
+                ui.text(ui.trim(l, w), x, y, Ui.TEXT_DIM);
+                y += 10;
+            }
+            return y + 2;
+        }
+        for (CameraRig r : rigs) {
+            boolean sel = r == selectedRig;
+            boolean hover = ui.hovered(x, y, w, 12);
+            if (sel || hover) ui.rect(x - 1, y, w + 2, 12, sel ? Ui.ACTIVE : Ui.HOVER);
+            String range = ReplayMeta.formatTicks(r.start) + "-" + ReplayMeta.formatTicks(r.end);
+            int rw = ui.width(range);
+            ui.text(ui.trim(r.type.displayName + ": " + rigTargetName(h, r), w - rw - 6), x + 1, y + 2, Ui.TEXT);
+            ui.text(range, x + w - rw, y + 2, Ui.TEXT_DIM);
+            if (ui.clicked(x, y, w, 12, 0)) selectedRig = r;
+            y += 12;
+        }
+        if (selectedRig == null || !rigs.contains(selectedRig)) {
+            selectedRig = null;
+            return y + 4;
+        }
+        y += 4;
+        ui.separator(x, y, w);
+        y += 5;
+        CameraRig r = selectedRig;
+        String before = GSON.toJson(r);
+        int total = Math.max(1, h.getTotalTicks() - 1);
+        if (ui.button("Type: " + r.type.displayName, x, y, w, 12, false, "Click to change")) {
+            r.type = CameraRig.Type.values()[(r.type.ordinal() + 1) % CameraRig.Type.values().length];
+        }
+        y += 14;
+        boolean loaded = h.findEntity(r.target) != null;
+        ui.text(
+            ui.trim("Target: " + rigTargetName(h, r) + (loaded ? "" : " (not here)"), w - 46),
+            x,
+            y + 2,
+            loaded ? Ui.TEXT : Ui.TEXT_DIM);
+        if (ui.button("Change", x + w - 42, y, 42, 12)) pickRigTarget(h, r.type, r);
+        y += 14;
+        r.start = (int) Math.round(ui.numberRow("Start tick", r.start, 1, 0, total - 1, "%.0f", x, y, w - 16));
+        if (ui.button("@", x + w - 14, y, 14, 11, false, "Start at the playhead")) r.start = h.getCurrentTick();
+        y += 13;
+        r.end = (int) Math.round(ui.numberRow("End tick", r.end, 1, 1, total, "%.0f", x, y, w - 16));
+        if (ui.button("@", x + w - 14, y, 14, 11, false, "End at the playhead")) r.end = h.getCurrentTick();
+        if (r.end <= r.start) r.end = Math.min(total, r.start + 1);
+        y += 15;
+        switch (r.type) {
+            case ORBIT:
+                r.radius = ui.sliderRow("Radius", r.radius, 0.5, 64, 0.1, "%.1f", x, y, w);
+                y += 13;
+                r.height = ui.numberRow("Height", r.height, 0.1, -64, 64, "%.1f", x, y, w);
+                y += 13;
+                r.startAngle = ui.sliderRow("Start angle", r.startAngle, -180, 180, 1, "%.0f", x, y, w);
+                y += 13;
+                r.orbitSpeed = ui.numberRow("Degrees/s", r.orbitSpeed, 1, -720, 720, "%.0f", x, y, w);
+                y += 13;
+                break;
+            case FOLLOW:
+                r.offsetRight = ui.numberRow("Right", r.offsetRight, 0.1, -64, 64, "%.2f", x, y, w);
+                y += 13;
+                r.offsetUp = ui.numberRow("Up", r.offsetUp, 0.1, -64, 64, "%.2f", x, y, w);
+                y += 13;
+                r.offsetForward = ui.numberRow("Forward", r.offsetForward, 0.1, -64, 64, "%.2f", x, y, w);
+                y += 13;
+                r.turnWithTarget = ui.checkbox("Turn with target", r.turnWithTarget, x, y, w);
+                y += 13;
+                break;
+            default:
+                r.x = ui.numberRow("X", r.x, 0.1, -3.0e7, 3.0e7, "%.2f", x, y, w);
+                y += 13;
+                r.y = ui.numberRow("Y", r.y, 0.1, -1024, 1024, "%.2f", x, y, w);
+                y += 13;
+                r.z = ui.numberRow("Z", r.z, 0.1, -3.0e7, 3.0e7, "%.2f", x, y, w);
+                y += 13;
+                break;
+        }
+        r.lookAtTarget = ui.checkbox("Look at target", r.lookAtTarget, x, y, w);
+        y += 13;
+        if (r.lookAtTarget) {
+            r.aimHeight = ui.sliderRow("Aim height", r.aimHeight, 0, 1.5, 0.05, "%.2f", x, y, w);
+            y += 13;
+        } else {
+            r.yaw = ui.sliderRow("Yaw", r.yaw, -180, 180, 1, "%.0f", x, y, w);
+            y += 13;
+            r.pitch = ui.sliderRow("Pitch", r.pitch, -90, 90, 1, "%.0f", x, y, w);
+            y += 13;
+        }
+        r.roll = ui.sliderRow("Roll", r.roll, -180, 180, 1, "%.0f", x, y, w);
+        y += 13;
+        r.smoothing = ui.sliderRow("Smoothing", r.smoothing, 0, 2, 0.05, "%.2f s", x, y, w);
+        y += 13;
+        r.blend = (int) Math.round(ui.numberRow("Blend ticks", r.blend, 1, 0, 200, "%.0f", x, y, w));
+        y += 15;
+        int hw = (w - 2) / 2;
+        if (ui.button("Fit to camera", x, y, hw, 12, false, "Start from where the camera is now")) {
+            if (!h.fitRigToCamera(r)) Notifications.show("FlashbackNH", "The target is not here at this tick");
+        }
+        if (ui.button("Jump to start", x + hw + 2, y, w - hw - 2, 12)) h.seek(r.start);
+        y += 14;
+        if (ui.button("Duplicate", x, y, hw, 12)) {
+            CameraRig copy = r.copy();
+            int length = r.end - r.start;
+            copy.start = Math.min(total - 1, r.end);
+            copy.end = Math.min(total, copy.start + Math.max(1, length));
+            rigs.add(copy);
+            selectedRig = copy;
+            h.markEditorDirty();
+        }
+        if (ui.button("Delete", x + hw + 2, y, w - hw - 2, 12)) {
+            rigs.remove(r);
+            selectedRig = null;
+            h.markEditorDirty();
+            return y + 14;
+        }
+        y += 14;
+        if (!before.equals(GSON.toJson(r))) h.markEditorDirty();
+        return y;
+    }
+
     private int drawHelp(int x, int y, int w) {
         String[] lines = { "Right mouse (hold): fly", "WASD / Space / Shift: move", "Scroll while flying: speed",
             "Ctrl while flying: boost", "Space: play / pause", "Left / Right: -/+ 1 tick", "Shift+Left/Right: -/+ 1 s",
             "Up / Down: next/prev keyframe", "I / O: in / out point", "K: camera keyframe", "M: add marker",
-            "Del: delete keyframes", "Ctrl+C / Ctrl+V: copy/paste", "Ctrl+A: select all", "Ctrl+drag playhead: preview",
+            "Drag a number or click to type", "Double-click a slider to type", "Del: delete keyframes",
+            "Ctrl+C / Ctrl+V: copy/paste", "Ctrl+A: select all", "Ctrl+drag playhead: preview",
             "Scroll on timeline: zoom", "F1: hide editor UI", "Ctrl+E: export", "Esc: replay menu" };
         for (String l : lines) {
             ui.text(ui.trim(l, w), x, y, Ui.TEXT_DIM);

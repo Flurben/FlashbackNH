@@ -203,6 +203,8 @@ public final class RecordingManager {
                 if (registry.exists()) extra.put(ReplayFormat.ENTRY_REGISTRY, registry);
                 File thumb = new File(workDir, ReplayFormat.ENTRY_THUMBNAIL);
                 if (thumb.exists()) extra.put(ReplayFormat.ENTRY_THUMBNAIL, thumb);
+                File capes = new File(workDir, ReplayFormat.ENTRY_CAPES);
+                if (capes.exists()) extra.put(ReplayFormat.ENTRY_CAPES, capes);
                 long start = System.nanoTime();
                 ReplayArchive.write(target, meta, new File(workDir, ReplayFormat.ENTRY_STREAM), extra);
                 FlashbackNH.LOG.info(
