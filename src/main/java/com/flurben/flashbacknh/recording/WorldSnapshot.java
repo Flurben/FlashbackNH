@@ -58,6 +58,7 @@ import net.minecraft.world.chunk.EmptyChunk;
 import net.minecraft.world.chunk.IChunkProvider;
 
 import com.flurben.flashbacknh.FlashbackNH;
+import com.flurben.flashbacknh.compat.MultipartCompat;
 import com.flurben.flashbacknh.format.ReplayFormat;
 import com.flurben.flashbacknh.format.TileBatch;
 import com.flurben.flashbacknh.mixins.early.InvokerEntityTrackerEntry;
@@ -74,6 +75,8 @@ public final class WorldSnapshot {
 
     /** A class with this many tile entities is what makes reading them slow, see {@link #readTiles}. */
     public static final int BULK_TILE_COUNT = 2048;
+    /** For tests: record multiparts the way versions before 0.2.1 did, as saved data only. */
+    public static volatile boolean skipMultiparts;
 
     private static final ExecutorService WORKERS = createWorkers();
 
@@ -192,14 +195,27 @@ public final class WorldSnapshot {
     private void readTiles(List<Chunk> chunks) {
         List<TileEntity> tiles = new ArrayList<>();
         Map<Class<?>, int[]> counts = new HashMap<>();
+        List<Chunk> multipartChunks = new ArrayList<>();
+        List<List<TileEntity>> multiparts = new ArrayList<>();
         for (Chunk chunk : chunks) {
+            List<TileEntity> chunkMultiparts = null;
             for (Object o : chunk.chunkTileEntityMap.values()) {
                 TileEntity te = (TileEntity) o;
                 if (te == null || te.isInvalid()) continue;
+                if (!skipMultiparts && MultipartCompat.isMultipart(te)) {
+                    if (chunkMultiparts == null) chunkMultiparts = new ArrayList<>();
+                    chunkMultiparts.add(te);
+                    continue;
+                }
                 tiles.add(te);
                 counts.computeIfAbsent(te.getClass(), c -> new int[1])[0]++;
             }
+            if (chunkMultiparts != null) {
+                multipartChunks.add(chunk);
+                multiparts.add(chunkMultiparts);
+            }
         }
+        for (Packet p : MultipartCompat.snapshotPackets(multipartChunks, multiparts)) packet(p);
         final TileReader now = new TileReader();
         final List<TileEntity> bulk = new ArrayList<>();
         for (TileEntity te : tiles) {

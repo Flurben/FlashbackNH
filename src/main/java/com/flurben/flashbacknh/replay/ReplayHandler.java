@@ -41,6 +41,7 @@ import org.apache.commons.io.FileUtils;
 
 import com.flurben.flashbacknh.FlashbackNH;
 import com.flurben.flashbacknh.compat.DistantHorizonsCompat;
+import com.flurben.flashbacknh.compat.MultipartCompat;
 import com.flurben.flashbacknh.editor.CameraRig;
 import com.flurben.flashbacknh.editor.EditorState;
 import com.flurben.flashbacknh.editor.KeyframeTrack;
@@ -167,6 +168,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
     public final CameraController cameraController = new CameraController();
     private ReplayCapes capes;
+    private int ignoredDisconnects, hiddenNotifications;
 
     /** Whether camera presets move the camera while paused, so they can be seen while editing them. */
     private boolean rigPreview;
@@ -913,6 +915,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
             TileBatch.read(d, new TileBatch.Sink() {
 
                 private boolean chunkStarted, chunkKept, mayLookDifferent;
+                /** Multiparts only saved as data, by recordings made before 0.2.1. */
+                private final List<NBTTagCompound> savedMultiparts = new ArrayList<>();
 
                 @Override
                 public boolean wants(int x, int y, int z) {
@@ -935,6 +939,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
                             te.readFromNBT(tag);
                             if (plan == null) countTile(te);
                             else mayLookDifferent = true;
+                        } else if (MultipartCompat.isSavedMultipart(tag)) {
+                            savedMultiparts.add(tag);
                         }
                     } catch (Throwable t) {
                         FlashbackNH.LOG.debug("Unable to restore tile entity state", t);
@@ -943,6 +949,10 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
                 @Override
                 public void chunkDone(int chunkX, int chunkZ, int minY, int maxY) {
+                    if (!savedMultiparts.isEmpty()) {
+                        MultipartCompat.restore(world, chunkX, chunkZ, savedMultiparts);
+                        savedMultiparts.clear();
+                    }
                     boolean mark = !chunkKept || mayLookDifferent;
                     chunkStarted = false;
                     mayLookDifferent = false;
@@ -1393,6 +1403,28 @@ public final class ReplayHandler implements PacketFilter.Listener {
         rig.pitch = camPitch;
         rig.roll = editor.visuals.cameraRoll;
         rigTargetOf = null;
+        return true;
+    }
+
+    /** Whether a disconnect sent to this net handler is ignored, as it belongs to a replay. */
+    public static boolean ignoresDisconnect(net.minecraft.client.network.NetHandlerPlayClient handler,
+        net.minecraft.network.play.server.S40PacketDisconnect packet) {
+        ReplayHandler h = active;
+        if (h == null || h.connection == null || h.connection.handler != handler) return false;
+        if (h.ignoredDisconnects++ < 5) {
+            FlashbackNH.LOG.warn(
+                "Ignored a disconnect in the replay: {}",
+                packet.func_149165_c()
+                    .getUnformattedText());
+        }
+        return true;
+    }
+
+    /** Whether mod notifications of the server (not chat) are hidden: in a replay with the chat hidden. */
+    public static boolean hidesServerMessages() {
+        ReplayHandler h = active;
+        if (h == null || h.editor.visuals.showChat) return false;
+        if (h.hiddenNotifications++ == 0) FlashbackNH.LOG.info("Hiding Server Utilities notifications in the replay");
         return true;
     }
 

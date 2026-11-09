@@ -428,6 +428,24 @@ public final class DevDriver {
                     log("shader reload failed: " + e);
                 }
                 break;
+            case "fmp":
+                multipart(a);
+                break;
+            case "sunotify": {
+                // a Server Utilities notification the way its packet hands it over, then how many are queued
+                Class<?> handler = Class.forName("serverutils.client.NotificationHandler");
+                handler.getMethod("onNotify", net.minecraft.util.IChatComponent.class)
+                    .invoke(null, new net.minecraft.util.ChatComponentText("FBNH test notification"));
+                java.lang.reflect.Field queue = handler.getDeclaredField("NOTIFICATIONS");
+                queue.setAccessible(true);
+                java.lang.reflect.Field current = handler.getDeclaredField("currentNotification");
+                current.setAccessible(true);
+                log(
+                    "sunotify queued=" + ((java.util.Collection<?>) queue.get(null)).size()
+                        + " showing="
+                        + (current.get(null) != null));
+                break;
+            }
             case "devcape":
                 devCape(a[1]);
                 break;
@@ -464,6 +482,115 @@ public final class DevDriver {
             default:
                 log("unknown command: " + line);
         }
+    }
+
+    /**
+     * fmp place <x> <y> <z> <face|post> <size> <slot> | fmp remove <x> <y> <z> | fmp check <x> <y> <z> | fmp oldformat
+     * <true|false>. Place and remove run on the integrated server through Forge Multipart, the way a player does it.
+     */
+    private void multipart(String[] a) throws Exception {
+        if (a[1].equals("oldformat")) {
+            com.flurben.flashbacknh.recording.WorldSnapshot.skipMultiparts = Boolean.parseBoolean(a[2]);
+            return;
+        }
+        final int x = Integer.parseInt(a[2]), y = Integer.parseInt(a[3]), z = Integer.parseInt(a[4]);
+        final Class<?> coordClass = Class.forName("codechicken.lib.vec.BlockCoord");
+        final Object coord = coordClass.getConstructor(int.class, int.class, int.class)
+            .newInstance(x, y, z);
+        final Class<?> tileCompanion = Class.forName("codechicken.multipart.TileMultipart$");
+        final Object tiles = tileCompanion.getField("MODULE$")
+            .get(null);
+        if (a[1].equals("check")) {
+            net.minecraft.tileentity.TileEntity te = mc.theWorld.getTileEntity(x, y, z);
+            String parts = "-";
+            if (te != null) {
+                try {
+                    parts = String.valueOf(
+                        te.getClass()
+                            .getMethod("partList")
+                            .invoke(te));
+                } catch (NoSuchMethodException ignored) {}
+            }
+            log(
+                "fmp check " + x
+                    + ","
+                    + y
+                    + ","
+                    + z
+                    + " block="
+                    + mc.theWorld.getBlock(x, y, z)
+                        .getUnlocalizedName()
+                    + " tile="
+                    + (te == null ? "none"
+                        : te.getClass()
+                            .getSimpleName())
+                    + " parts="
+                    + parts);
+            return;
+        }
+        final String kind = a[1].equals("place") ? a[5] : "";
+        final int size = a[1].equals("place") ? Integer.parseInt(a[6]) : 0;
+        final int slot = a[1].equals("place") ? Integer.parseInt(a[7]) : 0;
+        final boolean place = a[1].equals("place");
+        final net.minecraft.world.World world = mc.getIntegratedServer()
+            .worldServerForDimension(mc.thePlayer.dimension);
+        com.flurben.flashbacknh.util.ServerTasks.schedule(() -> {
+            try {
+                if (place) {
+                    Class<?> materials = Class.forName("codechicken.microblock.BlockMicroMaterial$");
+                    String key = (String) materials.getMethod("materialKey", net.minecraft.block.Block.class)
+                        .invoke(
+                            materials.getField("MODULE$")
+                                .get(null),
+                            net.minecraft.init.Blocks.stone);
+                    Class<?> registry = Class.forName("codechicken.microblock.MicroMaterialRegistry$");
+                    int material = (Integer) registry.getMethod("materialID", String.class)
+                        .invoke(
+                            registry.getField("MODULE$")
+                                .get(null),
+                            key);
+                    Class<?> microClass = Class.forName(
+                        "codechicken.microblock." + (kind.equals("post") ? "PostMicroClass$" : "FaceMicroClass$"));
+                    Object part = microClass.getMethod("create", boolean.class, int.class)
+                        .invoke(
+                            microClass.getField("MODULE$")
+                                .get(null),
+                            false,
+                            material);
+                    part.getClass()
+                        .getMethod("setShape", int.class, int.class)
+                        .invoke(part, size, slot);
+                    tileCompanion
+                        .getMethod(
+                            "addPart",
+                            net.minecraft.world.World.class,
+                            coordClass,
+                            Class.forName("codechicken.multipart.TMultiPart"))
+                        .invoke(tiles, world, coord, part);
+                    log("fmp placed " + kind + " at " + x + "," + y + "," + z);
+                } else {
+                    Object tile = tileCompanion.getMethod("getTile", net.minecraft.world.World.class, coordClass)
+                        .invoke(tiles, world, coord);
+                    if (tile == null) {
+                        log("fmp no tile at " + x + "," + y + "," + z);
+                        return;
+                    }
+                    Object list = tile.getClass()
+                        .getMethod("partList")
+                        .invoke(tile);
+                    Object first = list.getClass()
+                        .getMethod("head")
+                        .invoke(list);
+                    tile.getClass()
+                        .getMethod("remPart", Class.forName("codechicken.multipart.TMultiPart"))
+                        .invoke(tile, first);
+                    log("fmp removed a part at " + x + "," + y + "," + z);
+                }
+            } catch (Throwable t) {
+                log("fmp failed: " + t);
+                FlashbackNH.LOG.warn("fmp dev command failed", t);
+            }
+        });
     }
 
     /**

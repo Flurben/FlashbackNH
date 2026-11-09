@@ -23,8 +23,10 @@
     "early.MixinEntityRenderer",
     "early.MixinGuiIngame",
     "early.MixinMinecraft",
+    "early.MixinNetHandlerPlayClient",
     "early.MixinPlayerControllerMP",
     "early.MixinRenderManager",
+    "early.MixinServerUtilitiesNotifications",
     "early.MixinTimer"
   ],
   "server": []

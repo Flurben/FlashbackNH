@@ -26,6 +26,8 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
 - Up to four marker keybinds; dimension changes are marked automatically.
 - Crash safe: recordings are written continuously and can be recovered after a crash.
 - The block/item id mapping (which differs per world in 1.7.10) is stored and restored for playback.
+- Forge Multipart microblocks that are already in the world when a recording starts are recorded too (Forge Multipart
+  only sends them when a chunk is first seen), and replays from older versions rebuild them from their saved data.
 - Capes from mods (GregTech, Galacticraft, Galaxy Space and others that change the player's cape texture) are recorded
   with each player and shown in the replay, even though the mod packets or downloads that gave them out are not
   replayed. Capes that only exist as a download are stored in the replay as an image.
@@ -57,7 +59,7 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
   Playback speed and flying speed can be typed in too.
 - Player list: spectate any player (first person, including the recorder's HUD), hide/show players, teleport the
   camera to them; spectate nearby mobs.
-- Visuals: toggle chat, scoreboard, player list, boss bar, entities, players, particles, sky, clouds and nametags;
+- Visuals: toggle chat (which also covers Server Utilities notifications such as backups and claimed chunks), scoreboard, player list, boss bar, entities, players, particles, sky, clouds and nametags;
   override FOV, time of day and weather; night vision; camera roll; camera shake; rule-of-thirds and center guides.
 - Editor state (keyframes, in/out points, visuals, export settings) is saved inside the replay file.
 
@@ -147,6 +149,8 @@ results read from screenshots, exported files and logs.
   replays and an MP4 export; weather keyframes (rain and thunder strength in between keyframes); orbit and follow
   presets during playback (orbit radius within 0.02 blocks, camera aimed at the target) and in an MP4 export; the
   presets panel and its timeline bars; typing into a number box and into a slider.
+- Forge Multipart: pillar and face microblocks placed before a mid-session recording show in its replay, also in a replay
+  recorded the old way, and one removed during the recording disappears in the replay without ending it.
 - GregTech: machine hulls, basic machines, wires and pipes in replays and exports. Live and replayed views match under
   shaders.
 - No crashes and no failed replay packets in the final runs.
