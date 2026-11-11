@@ -348,6 +348,29 @@ public final class DevDriver {
             case "key":
                 key(a[1], a[2].equals("down"));
                 break;
+            case "place": {
+                // place <x> <y> <z> <side>: uses the held item on that face of the block, as a right click would
+                int x = Integer.parseInt(a[1]), y = Integer.parseInt(a[2]), z = Integer.parseInt(a[3]);
+                // some mods find the face again from where the player looks, so look at it
+                net.minecraftforge.common.util.ForgeDirection face = net.minecraftforge.common.util.ForgeDirection
+                    .getOrientation(Integer.parseInt(a[4]));
+                double dx = x + 0.5 + face.offsetX * 0.5 - mc.thePlayer.posX;
+                double dy = y + 0.5 + face.offsetY * 0.5 - mc.thePlayer.posY;
+                double dz = z + 0.5 + face.offsetZ * 0.5 - mc.thePlayer.posZ;
+                mc.thePlayer.rotationYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+                mc.thePlayer.rotationPitch = (float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
+                boolean done = mc.playerController.onPlayerRightClick(
+                    mc.thePlayer,
+                    mc.theWorld,
+                    mc.thePlayer.getHeldItem(),
+                    x,
+                    y,
+                    z,
+                    Integer.parseInt(a[4]),
+                    net.minecraft.util.Vec3.createVectorHelper(x + 0.5, y + 0.5, z + 0.5));
+                log("place " + line.substring(6) + " " + done);
+                break;
+            }
             case "rec":
                 record(a);
                 break;

@@ -216,7 +216,7 @@ public final class WorldSnapshot {
             }
         }
         for (Packet p : MultipartCompat.snapshotPackets(multipartChunks, multiparts)) packet(p);
-        final TileReader now = new TileReader();
+        final TileReader now = new TileReader(true);
         final List<TileEntity> bulk = new ArrayList<>();
         for (TileEntity te : tiles) {
             if (!te.canUpdate() && counts.get(te.getClass())[0] >= BULK_TILE_COUNT) bulk.add(te);
@@ -224,7 +224,7 @@ public final class WorldSnapshot {
         }
         records.addAll(now.finish());
         records.add(new Rec(WORKERS.submit(() -> {
-            TileReader later = new TileReader();
+            TileReader later = new TileReader(false);
             for (TileEntity te : bulk) later.read(te);
             List<Rec> result = later.finish();
             later.missing.addAll(now.missing);
@@ -238,14 +238,27 @@ public final class WorldSnapshot {
         final List<int[]> missing = new ArrayList<>();
         private final List<Rec> out = new ArrayList<>();
         private final TileBatch batch = new TileBatch();
+        /** Whether a tile entity with a description packet is also saved, see {@link #read}. */
+        private final boolean saveDescribed;
 
+        TileReader(boolean saveDescribed) {
+            this.saveDescribed = saveDescribed;
+        }
+
+        /**
+         * A description packet is often not all of a tile entity's state. A GregTech hatch's only has its texture,
+         * the machine itself comes in a GregTech packet sent when a player starts watching the chunk, and without the
+         * machine the packet is not used. So these tile entities are also saved, and that is restored first.
+         */
         void read(TileEntity te) {
-            Packet desc = null;
-            try {
-                desc = te.getDescriptionPacket();
-            } catch (Throwable t) {
-                if (failures.getAndIncrement() < 20) {
-                    FlashbackNH.LOG.debug("Snapshot: description packet failed for {}", te, t);
+            Packet desc = ServerTileData.packetFor(te);
+            if (desc == null) {
+                try {
+                    desc = te.getDescriptionPacket();
+                } catch (Throwable t) {
+                    if (failures.getAndIncrement() < 20) {
+                        FlashbackNH.LOG.debug("Snapshot: description packet failed for {}", te, t);
+                    }
                 }
             }
             if (desc != null) {
@@ -255,9 +268,14 @@ public final class WorldSnapshot {
                 } catch (Throwable t) {
                     warn(desc, t);
                 }
+                if (saveDescribed) save(te);
                 return;
             }
             missing.add(new int[] { te.xCoord, te.yCoord, te.zCoord });
+            save(te);
+        }
+
+        private void save(TileEntity te) {
             try {
                 NBTTagCompound tag = new NBTTagCompound();
                 te.writeToNBT(tag);
@@ -269,10 +287,11 @@ public final class WorldSnapshot {
             }
         }
 
+        /** The saved tile entities, then the description packets, so that what a packet sets is what stays. */
         List<Rec> finish() {
             if (batch.size() > 0) {
                 try {
-                    out.add(new Rec(ReplayFormat.REC_TILE_BATCH, batch.toBytes()));
+                    out.add(0, new Rec(ReplayFormat.REC_TILE_BATCH, batch.toBytes()));
                 } catch (IOException e) {
                     FlashbackNH.LOG.warn("Snapshot: unable to store tile entities", e);
                 }
