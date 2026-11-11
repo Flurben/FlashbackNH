@@ -17,6 +17,7 @@ import com.flurben.flashbacknh.editor.TrackType;
 import com.flurben.flashbacknh.export.ExportSettings;
 import com.flurben.flashbacknh.export.Exporter;
 import com.flurben.flashbacknh.export.FFmpegEncoder;
+import com.flurben.flashbacknh.export.VideoEncoders;
 import com.flurben.flashbacknh.format.ReplayMeta;
 import com.flurben.flashbacknh.recording.RecordingManager;
 import com.flurben.flashbacknh.replay.ReplayHandler;
@@ -32,9 +33,14 @@ public class GuiExport extends GuiScreen {
     private GuiTextField widthField, heightField, fpsField, crfField, startField, endField, nameField;
     private FFmpegEncoder.Format format;
     private String preset;
+    private FFmpegEncoder.Mp4Layout mp4Layout;
+    private VideoEncoders.Choice encoder;
+    private GuiButton encoderButton, presetButton;
     private boolean useSpeedTrack, hideNametags, waitForChunks;
     private int extraFrames;
     private String error;
+    private GuiButton mp4Button;
+    private boolean encoderChecked;
 
     private static final String[] PRESETS = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow",
         "slower", "veryslow" };
@@ -47,15 +53,18 @@ public class GuiExport extends GuiScreen {
         EditorState.ExportSettings s = h != null ? h.editor.export : new EditorState.ExportSettings();
         format = FFmpegEncoder.Format.parse(s.format != null ? s.format : Config.exportFormat);
         preset = Config.exportPreset;
+        mp4Layout = FFmpegEncoder.Mp4Layout.parse(Config.exportMp4Layout);
+        encoder = VideoEncoders.Choice.parse(Config.exportEncoder);
         useSpeedTrack = s.useSpeedTrack;
         hideNametags = s.hideNametags;
         waitForChunks = Config.exportWaitForChunks;
         extraFrames = Config.exportExtraFrames;
         if (!ffmpegProbed) {
             ffmpegProbed = true;
-            Thread t = new Thread(
-                () -> ffmpegVersion = FFmpegEncoder.probe(Config.ffmpegPath),
-                "FlashbackNH ffmpeg probe");
+            Thread t = new Thread(() -> {
+                ffmpegVersion = FFmpegEncoder.probe(Config.ffmpegPath);
+                if (ffmpegVersion != null) VideoEncoders.detect(Config.ffmpegPath);
+            }, "FlashbackNH ffmpeg probe");
             t.setDaemon(true);
             t.start();
         }
@@ -72,38 +81,82 @@ public class GuiExport extends GuiScreen {
         EditorState.ExportSettings s = h.editor.export;
         int cx = width / 2;
         int left = cx - 155;
-        int y = 40;
+        int y = top();
         buttonList.clear();
 
         widthField = field(left + 70, y, 50, String.valueOf(s.width > 0 ? s.width : Config.exportWidth));
         heightField = field(left + 130, y, 50, String.valueOf(s.height > 0 ? s.height : Config.exportHeight));
         buttonList.add(new GuiButton(1, left + 190, y - 1, 120, 20, "Preset resolution"));
-        y += 24;
+        y += row();
         fpsField = field(left + 70, y, 50, String.valueOf(s.fps > 0 ? s.fps : Config.exportFps));
         crfField = field(left + 190, y, 40, String.valueOf(s.crf >= 0 ? s.crf : Config.exportCrf));
-        y += 24;
+        y += row();
         buttonList.add(new GuiButton(2, left, y, 150, 20, "Format: " + format.displayName));
-        buttonList.add(new GuiButton(3, left + 160, y, 150, 20, "x264 preset: " + preset));
-        y += 24;
+        presetButton = new GuiButton(3, left + 160, y, 150, 20, "x264 preset: " + preset);
+        buttonList.add(presetButton);
+        y += row();
+        encoderButton = new GuiButton(11, left, y, 150, 20, "");
+        buttonList.add(encoderButton);
+        mp4Button = new GuiButton(10, left + 160, y, 150, 20, "MP4 index: " + mp4Layout.displayName);
+        mp4Button.enabled = format == FFmpegEncoder.Format.MP4;
+        buttonList.add(mp4Button);
+        updateEncoderButtons();
+        y += row();
         int start = h.editor.inPoint >= 0 ? h.editor.inPoint : 0;
         int end = h.editor.outPoint >= 0 ? h.editor.outPoint : h.getTotalTicks() - 1;
         startField = field(left + 70, y, 60, String.valueOf(start));
         endField = field(left + 190, y, 60, String.valueOf(end));
-        y += 24;
+        y += row();
         buttonList.add(new GuiButton(4, left, y, 150, 20, "Speed keyframes: " + (useSpeedTrack ? "On" : "Off")));
         buttonList.add(new GuiButton(5, left + 160, y, 150, 20, "Nametags: " + (hideNametags ? "Hidden" : "Shown")));
-        y += 24;
+        y += row();
         buttonList.add(new GuiButton(6, left, y, 150, 20, "Wait for chunks: " + (waitForChunks ? "On" : "Off")));
         buttonList.add(new GuiButton(7, left + 160, y, 150, 20, "Extra frames: " + extraFrames));
-        y += 24;
+        y += row();
         String defName = s.filename != null ? s.filename : Config.exportFilename;
         nameField = field(left + 70, y, 240, "");
         nameField.setMaxStringLength(200);
         nameField.setText(defName);
-        y += 30;
-        buttonList.add(new GuiButton(0, cx - 155, y, 150, 20, "Start Export"));
-        buttonList.add(new GuiButton(9, cx + 5, y, 150, 20, "Cancel"));
-        buttonList.add(new GuiButton(8, cx - 155, y + 24, 310, 20, "Open exports folder"));
+        y += row() + 4;
+        buttonList.add(new GuiButton(0, cx - 155, y, 100, 20, "Start Export"));
+        buttonList.add(new GuiButton(8, cx - 50, y, 100, 20, "Open folder"));
+        buttonList.add(new GuiButton(9, cx + 55, y, 100, 20, "Cancel"));
+    }
+
+    private boolean usesEncoder() {
+        return format == FFmpegEncoder.Format.MP4 || format == FFmpegEncoder.Format.MKV;
+    }
+
+    private void updateEncoderButtons() {
+        if (encoderButton == null) return;
+        encoderButton.enabled = usesEncoder();
+        String label = "Encoder: " + encoder.displayName;
+        if (VideoEncoders.detected(Config.ffmpegPath)) {
+            if (encoder == VideoEncoders.Choice.AUTO) {
+                label = "Auto: " + VideoEncoders.auto(Config.ffmpegPath).displayName;
+            } else if (encoder != VideoEncoders.Choice.LIBX264 && !VideoEncoders.detect(Config.ffmpegPath)
+                .contains(encoder)) {
+                    label += " (n/a: x264)";
+                }
+        }
+        encoderButton.displayString = label;
+        // the x264 preset only matters for x264
+        presetButton.enabled = usesEncoder() && (encoder == VideoEncoders.Choice.LIBX264
+            || (encoder == VideoEncoders.Choice.AUTO && VideoEncoders.detected(Config.ffmpegPath)
+                && VideoEncoders.auto(Config.ffmpegPath) == VideoEncoders.Choice.LIBX264));
+    }
+
+    /** The first row, lower on screens with room to spare. */
+    private int top() {
+        return height >= 330 ? 40 : 28;
+    }
+
+    /**
+     * Row spacing: 24 where the dialog fits, less on short screens (large GUI scale or a small window), so the
+     * buttons and the ffmpeg line stay on screen. Eight rows sit between the title and the buttons.
+     */
+    private int row() {
+        return Math.max(20, Math.min(24, (height - top() - 4 - 20 - 24) / 8));
     }
 
     private GuiTextField field(int x, int y, int w, String text) {
@@ -142,6 +195,17 @@ public class GuiExport extends GuiScreen {
             case 2:
                 format = FFmpegEncoder.Format.values()[(format.ordinal() + 1) % FFmpegEncoder.Format.values().length];
                 b.displayString = "Format: " + format.displayName;
+                mp4Button.enabled = format == FFmpegEncoder.Format.MP4;
+                updateEncoderButtons();
+                return;
+            case 11:
+                encoder = VideoEncoders.Choice.values()[(encoder.ordinal() + 1) % VideoEncoders.Choice.values().length];
+                updateEncoderButtons();
+                return;
+            case 10:
+                mp4Layout = FFmpegEncoder.Mp4Layout.values()[(mp4Layout.ordinal() + 1)
+                    % FFmpegEncoder.Mp4Layout.values().length];
+                b.displayString = "MP4 index: " + mp4Layout.displayName;
                 return;
             case 3: {
                 int i = 0;
@@ -186,6 +250,10 @@ public class GuiExport extends GuiScreen {
         s.crf = Math.max(0, Math.min(63, parseInt(crfField, 18)));
         s.format = format;
         s.preset = preset;
+        s.mp4Layout = mp4Layout;
+        s.encoder = encoder;
+        s.asyncReadback = Config.exportAsyncReadback;
+        s.pngCompression = Config.exportPngCompression;
         s.startTick = Math.max(0, parseInt(startField, 0));
         s.endTick = Math.min(h.getTotalTicks() - 1, parseInt(endField, h.getTotalTicks() - 1));
         s.useSpeedTrack = useSpeedTrack;
@@ -225,6 +293,8 @@ public class GuiExport extends GuiScreen {
         Config.setAndSave(Config.CAT_EXPORT, "waitForChunks", waitForChunks);
         Config.setAndSave(Config.CAT_EXPORT, "extraFrames", extraFrames);
         Config.setAndSave(Config.CAT_EXPORT, "preset", preset);
+        Config.setAndSave(Config.CAT_EXPORT, "mp4Layout", mp4Layout.name());
+        Config.setAndSave(Config.CAT_EXPORT, "encoder", encoder.name());
         try {
             Exporter.start(h, s);
         } catch (Throwable t) {
@@ -278,6 +348,11 @@ public class GuiExport extends GuiScreen {
 
     @Override
     public void updateScreen() {
+        // the encoder check finishes after the screen opens
+        if (encoderButton != null && VideoEncoders.detected(Config.ffmpegPath) && !encoderChecked) {
+            encoderChecked = true;
+            updateEncoderButtons();
+        }
         for (GuiTextField f : fields()) f.updateCursorCounter();
     }
 
@@ -292,13 +367,13 @@ public class GuiExport extends GuiScreen {
         int cx = width / 2;
         int left = cx - 155;
         drawCenteredString(fontRendererObj, "Export Video", cx, 14, 0xFFFFFF);
-        int y = 40;
+        int y = top();
         drawString(fontRendererObj, "Resolution", left, y + 5, 0xA0A0A0);
         drawString(fontRendererObj, "x", left + 123, y + 5, 0xA0A0A0);
-        y += 24;
+        y += row();
         drawString(fontRendererObj, "Framerate", left, y + 5, 0xA0A0A0);
         drawString(fontRendererObj, "Quality (CRF)", left + 125, y + 5, 0xA0A0A0);
-        y += 48;
+        y += 3 * row();
         drawString(fontRendererObj, "Start tick", left, y + 5, 0xA0A0A0);
         drawString(fontRendererObj, "End tick", left + 140, y + 5, 0xA0A0A0);
         ReplayHandler h = ReplayHandler.get();
@@ -309,7 +384,7 @@ public class GuiExport extends GuiScreen {
                 .isActive()) dur += " (before speed keyframes)";
             drawString(fontRendererObj, dur, left + 258, y + 5, 0x707070);
         }
-        y += 72;
+        y += 3 * row();
         drawString(fontRendererObj, "Filename", left, y + 5, 0xA0A0A0);
         for (GuiTextField f : fields()) f.drawTextBox();
         super.drawScreen(mx, my, pt);
@@ -329,12 +404,12 @@ public class GuiExport extends GuiScreen {
             status = "ffmpeg not found - set 'ffmpegPath' in the FlashbackNH config or export PNG";
             color = 0xE07070;
         }
-        drawCenteredString(fontRendererObj, status, cx, height - 36, color);
+        drawCenteredString(fontRendererObj, status, cx, height - 22, color);
         drawCenteredString(
             fontRendererObj,
             "Audio is not exported. Tip: use the in/out points (I/O) to set the range.",
             cx,
-            height - 24,
+            height - 11,
             0x707070);
         if (error != null) drawCenteredString(fontRendererObj, error, cx, 28, 0xFF6060);
     }

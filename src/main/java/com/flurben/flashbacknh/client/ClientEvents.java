@@ -77,6 +77,8 @@ public final class ClientEvents {
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase == TickEvent.Phase.START) {
+            Exporter ex = Exporter.get();
+            if (ex != null) ex.onFrameStart();
             ReplayHandler h = ReplayHandler.get();
             if (h != null) {
                 try {

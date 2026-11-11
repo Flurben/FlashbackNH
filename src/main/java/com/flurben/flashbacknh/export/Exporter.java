@@ -8,13 +8,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.settings.GameSettings;
 import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.event.ClickEvent;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatStyle;
 import net.minecraft.util.EnumChatFormatting;
 
-import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
@@ -62,14 +62,19 @@ public final class Exporter implements ReplayHandler.ClockDriver {
     private int warmupLeft;
     private int extraLeft;
     private int waited;
-    private ByteBuffer pixels;
+    private FrameReader reader;
+    private long handOffNanos;
     private boolean finished;
+    private final ExportStats stats = new ExportStats();
 
     // saved state
     private boolean savedHideGui;
     private boolean savedNametags;
     private boolean savedPaused;
     private int savedWidth, savedHeight;
+    private boolean savedVsync;
+    private int savedFrameLimit;
+    private boolean renderSettingsChanged;
 
     private Exporter(ReplayHandler handler, ExportSettings settings, FrameEncoder encoder) {
         this.handler = handler;
@@ -90,21 +95,33 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         if (settings.endTick <= settings.startTick) throw new IOException("The export range is empty");
         FrameEncoder encoder;
         if (settings.format == FFmpegEncoder.Format.PNG) {
-            encoder = new PngSequenceEncoder(settings.output);
+            encoder = new PngSequenceEncoder(settings.output, settings.pngCompression);
         } else {
-            encoder = new FFmpegEncoder(
-                settings.ffmpegPath,
-                settings.format,
-                settings.output,
-                settings.width,
-                settings.height,
-                settings.fps,
-                settings.crf,
-                settings.preset);
+            if (settings.format == FFmpegEncoder.Format.MP4 || settings.format == FFmpegEncoder.Format.MKV) {
+                settings.resolvedEncoder = resolveEncoder(settings);
+            }
+            encoder = new FFmpegEncoder(settings);
         }
         Exporter e = new Exporter(handler, settings, encoder);
         active = e;
         e.begin();
+    }
+
+    /**
+     * The encoder to use: Auto's pick, or the chosen one. A hardware encoder first encodes a test frame of the export's
+     * size; if it fails the export uses libx264 and says so.
+     */
+    private static VideoEncoders.Choice resolveEncoder(ExportSettings s) {
+        VideoEncoders.Choice c = s.encoder == null ? VideoEncoders.Choice.LIBX264 : s.encoder;
+        if (c == VideoEncoders.Choice.AUTO) c = VideoEncoders.auto(s.ffmpegPath);
+        if (c == VideoEncoders.Choice.LIBX264) return c;
+        if (VideoEncoders.test(s.ffmpegPath, c, s.width, s.height, s.crf)) {
+            FlashbackNH.LOG.info("Exporting with the hardware encoder {}", c.codec);
+            return c;
+        }
+        FlashbackNH.LOG.warn("Hardware encoder {} failed its test, exporting with libx264", c.codec);
+        Notifications.show("FlashbackNH", c.displayName + " did not work: exporting with x264", 8000);
+        return VideoEncoders.Choice.LIBX264;
     }
 
     private int countFrames() {
@@ -137,13 +154,15 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         if (settings.hideNametags) handler.editor.visuals.renderNametags = false;
         mc.getSoundHandler()
             .pauseSounds();
+        unlockFramerate();
 
         // even a resize to the same size rebuilds the framebuffer, which disturbs active shaders
         if (savedWidth != settings.width || savedHeight != settings.height) {
             ((AccessorMinecraft) mc).flashbacknh$resize(settings.width, settings.height);
             DistantHorizonsCompat.reloadShadersAfterResize();
         }
-        pixels = BufferUtils.createByteBuffer(settings.width * settings.height * 4);
+        reader = settings.asyncReadback ? FrameReader.create(settings.width, settings.height)
+            : new FrameReader.Direct(settings.width, settings.height);
 
         handler.seekReloading(settings.startTick);
         time = settings.startTick;
@@ -160,6 +179,58 @@ public final class Exporter implements ReplayHandler.ClockDriver {
             settings.endTick,
             totalFrames,
             settings.output);
+    }
+
+    /**
+     * Turns vsync and the frame limit off for the export, which would otherwise hold it to the screen's refresh rate.
+     * The user's values stay what options.txt gets, see {@link #beforeOptionsSave}.
+     */
+    private void unlockFramerate() {
+        savedVsync = mc.gameSettings.enableVsync;
+        savedFrameLimit = mc.gameSettings.limitFramerate;
+        renderSettingsChanged = true;
+        mc.gameSettings.enableVsync = false;
+        mc.gameSettings.limitFramerate = UNLIMITED;
+        try {
+            Display.setVSyncEnabled(false);
+        } catch (Throwable t) {
+            FlashbackNH.LOG.warn("Unable to turn vsync off for the export", t);
+        }
+    }
+
+    private static final int UNLIMITED = (int) GameSettings.Options.FRAMERATE_LIMIT.getValueMax();
+
+    private void restoreFramerate() {
+        if (!renderSettingsChanged) return;
+        renderSettingsChanged = false;
+        mc.gameSettings.enableVsync = savedVsync;
+        mc.gameSettings.limitFramerate = savedFrameLimit;
+        try {
+            Display.setVSyncEnabled(savedVsync);
+        } catch (Throwable t) {
+            FlashbackNH.LOG.warn("Unable to restore vsync after the export", t);
+        }
+    }
+
+    /** Before options.txt is written: puts the user's vsync and frame limit back for the write. */
+    public static void beforeOptionsSave() {
+        Exporter e = active;
+        if (e == null || !e.renderSettingsChanged) return;
+        e.mc.gameSettings.enableVsync = e.savedVsync;
+        e.mc.gameSettings.limitFramerate = e.savedFrameLimit;
+    }
+
+    /** After options.txt is written: the export's values again. */
+    public static void afterOptionsSave() {
+        Exporter e = active;
+        if (e == null || !e.renderSettingsChanged) return;
+        e.mc.gameSettings.enableVsync = false;
+        e.mc.gameSettings.limitFramerate = UNLIMITED;
+    }
+
+    /** Called at the start of every rendered frame. */
+    public void onFrameStart() {
+        if (!finished) stats.frameStart();
     }
 
     @Override
@@ -185,25 +256,37 @@ public final class Exporter implements ReplayHandler.ClockDriver {
             warmupLeft = Math.max(warmupLeft, 5);
         }
         if (mc.currentScreen != null) mc.displayGuiScreen(null);
+        long renderedAt = stats.frameRendered();
+        int skipped = -1;
         try {
             if (warmupLeft > 0) {
                 warmupLeft--;
+                skipped = 0;
                 return;
             }
-            if (settings.waitForChunks && DistantHorizonsCompat.isLoadingLods()) return;
+            if (settings.waitForChunks && DistantHorizonsCompat.isLoadingLods()) {
+                skipped = 1;
+                return;
+            }
             if (settings.waitForChunks && waited < 240 && !ChunkWaiter.isComplete()) {
                 waited++;
+                skipped = 1;
                 return;
             }
             if (extraLeft > 0) {
                 extraLeft--;
+                skipped = 2;
                 return;
             }
-            capture();
+            handOffNanos = 0;
+            readback();
+            long done = System.nanoTime();
+            stats.saved(renderedAt, done - handOffNanos, done);
             framesWritten++;
             waited = 0;
             extraLeft = settings.extraFrames;
             if (framesWritten >= totalFrames) {
+                reader.flush(sink);
                 finish();
                 return;
             }
@@ -212,11 +295,17 @@ public final class Exporter implements ReplayHandler.ClockDriver {
             FlashbackNH.LOG.error("Export failed", t);
             cancel("Export failed: " + t.getMessage());
         } finally {
-            if (!finished) drawProgress();
+            if (!finished) {
+                long p = System.nanoTime();
+                drawProgress();
+                stats.progress += System.nanoTime() - p;
+                if (skipped >= 0) stats.skipped(renderedAt, skipped);
+            }
         }
     }
 
-    private void capture() throws IOException {
+    /** Reads the frame just rendered; the reader hands it, or an earlier one, to the encoder. */
+    private void readback() throws IOException {
         int w = settings.width, h = settings.height;
         Framebuffer fb = mc.getFramebuffer();
         if (OpenGlHelper.isFramebufferEnabled()) {
@@ -228,11 +317,16 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         } else {
             GL11.glReadBuffer(GL11.GL_BACK);
         }
-        pixels.clear();
-        GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
-        GL11.glReadPixels(0, 0, w, h, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
-        pixels.rewind();
-        encoder.encode(pixels, w, h);
+        reader.read(w, h, sink);
+    }
+
+    /** Hands frames to the encoder and keeps the time it took apart from the readback's. */
+    private final FrameReader.Sink sink = this::handOff;
+
+    private void handOff(ByteBuffer rgb, int w, int h) throws IOException {
+        long t = System.nanoTime();
+        encoder.encode(rgb, w, h);
+        handOffNanos += System.nanoTime() - t;
     }
 
     private void drawProgress() {
@@ -293,6 +387,8 @@ public final class Exporter implements ReplayHandler.ClockDriver {
 
     private void restore() {
         handler.setClockDriver(null);
+        restoreFramerate();
+        if (reader != null) reader.dispose();
         mc.gameSettings.hideGUI = savedHideGui;
         handler.editor.visuals.renderNametags = savedNametags;
         handler.setPaused(true);
@@ -319,7 +415,10 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         Notifications.show("FlashbackNH", "Finishing export...");
         Thread t = new Thread(() -> {
             try {
+                long closing = System.nanoTime();
                 encoder.close();
+                stats.finish = System.nanoTime() - closing;
+                stats.log("finished", encoder.stats());
                 Notifications.show("Export finished", out.getName(), 8000);
                 ChatComponentText msg = new ChatComponentText("[FlashbackNH] Export saved: ");
                 ChatComponentText link = new ChatComponentText(out.getName());
@@ -344,6 +443,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
     public void cancel(String message) {
         if (finished) return;
         finished = true;
+        stats.log("stopped (" + message + ")", encoder.stats());
         encoder.abort();
         restore();
         Notifications.show("FlashbackNH", message, 6000);

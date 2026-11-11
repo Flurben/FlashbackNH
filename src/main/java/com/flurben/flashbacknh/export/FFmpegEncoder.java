@@ -20,8 +20,8 @@ public final class FFmpegEncoder implements FrameEncoder {
 
     public enum Format {
 
-        MP4("mp4", "H.264 (MP4)"),
-        MKV("mkv", "H.264 (MKV)"),
+        MP4("mp4", "MP4"),
+        MKV("mkv", "MKV"),
         WEBM("webm", "VP9 (WebM)"),
         MOV_PRORES("mov", "ProRes 422 HQ (MOV)"),
         GIF("gif", "GIF"),
@@ -44,19 +44,64 @@ public final class FFmpegEncoder implements FrameEncoder {
         }
     }
 
+    /** Where an MP4 keeps its index, which decides how the file is finished. */
+    public enum Mp4Layout {
+
+        /** Index at the end. Nothing is rewritten when the export ends, and every player and editor reads it. */
+        STANDARD("Standard", ""),
+        /**
+         * Index in small pieces along the video. Nothing is rewritten, and the file stays playable if the game
+         * crashes during the export, but some older editors read such files badly.
+         */
+        FRAGMENTED("Fragmented", "+frag_keyframe+empty_moov+default_base_moof"),
+        /**
+         * Index at the start, for playing in a browser before the whole file has downloaded. ffmpeg rewrites the whole
+         * file once to get there, which takes a while for long exports.
+         */
+        FASTSTART("Fast start (web)", "+faststart");
+
+        public final String displayName;
+        final String movflags;
+
+        Mp4Layout(String displayName, String movflags) {
+            this.displayName = displayName;
+            this.movflags = movflags;
+        }
+
+        public static Mp4Layout parse(String s) {
+            try {
+                return valueOf(s.toUpperCase());
+            } catch (Exception e) {
+                return STANDARD;
+            }
+        }
+    }
+
     private static final byte[] POISON = new byte[0];
 
     private final Process process;
     private final File output;
-    private final BlockingQueue<byte[]> queue = new ArrayBlockingQueue<>(6);
+    private static final int QUEUED = 6;
+    /** Frames waiting for ffmpeg. */
+    private final BlockingQueue<byte[]> queue = new ArrayBlockingQueue<>(QUEUED);
+    /**
+     * Frame buffers ffmpeg is done with. All buffers of an export are made once: the queued ones, the one being
+     * written and the one being filled.
+     */
+    private final BlockingQueue<byte[]> free = new ArrayBlockingQueue<>(QUEUED + 2);
+    private int buffers;
     private final Thread writer;
     private final StringBuilder log = new StringBuilder();
     private volatile String error;
-    private byte[] scratch;
+    private volatile long idleNanos, writeNanos;
+    private volatile int written;
 
-    public FFmpegEncoder(String ffmpeg, Format format, File output, int width, int height, int fps, int crf,
-        String preset) throws IOException {
-        this.output = output;
+    public FFmpegEncoder(ExportSettings s) throws IOException {
+        String ffmpeg = s.ffmpegPath;
+        Format format = s.format;
+        int width = s.width, height = s.height, fps = s.fps, crf = s.crf;
+        String preset = s.preset;
+        this.output = s.output;
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpeg);
         cmd.add("-y");
@@ -66,7 +111,7 @@ public final class FFmpegEncoder implements FrameEncoder {
         cmd.add("-f");
         cmd.add("rawvideo");
         cmd.add("-pix_fmt");
-        cmd.add("rgba");
+        cmd.add("rgb24");
         cmd.add("-s");
         cmd.add(width + "x" + height);
         cmd.add("-r");
@@ -108,17 +153,17 @@ public final class FFmpegEncoder implements FrameEncoder {
             default:
                 cmd.add("-vf");
                 cmd.add("vflip");
-                cmd.add("-c:v");
-                cmd.add("libx264");
-                cmd.add("-preset");
-                cmd.add(preset == null || preset.isEmpty() ? "medium" : preset);
-                cmd.add("-crf");
-                cmd.add(String.valueOf(crf));
-                cmd.add("-pix_fmt");
-                cmd.add("yuv420p");
-                if (format == Format.MP4) {
+                VideoEncoders.Choice codec = s.resolvedEncoder != null ? s.resolvedEncoder
+                    : VideoEncoders.Choice.LIBX264;
+                cmd.addAll(VideoEncoders.args(codec, crf, preset, s.encoderThreads));
+                // the tag Apple players and editors want for HEVC in MP4
+                if (codec == VideoEncoders.Choice.HEVC_NVENC && format == Format.MP4) {
+                    cmd.add("-tag:v");
+                    cmd.add("hvc1");
+                }
+                if (format == Format.MP4 && !s.mp4Layout.movflags.isEmpty()) {
                     cmd.add("-movflags");
-                    cmd.add("+faststart");
+                    cmd.add(s.mp4Layout.movflags);
                 }
                 break;
         }
@@ -152,9 +197,15 @@ public final class FFmpegEncoder implements FrameEncoder {
         this.writer = new Thread(() -> {
             try (OutputStream out = process.getOutputStream()) {
                 while (true) {
+                    long t0 = System.nanoTime();
                     byte[] frame = queue.take();
+                    long t1 = System.nanoTime();
                     if (frame == POISON) break;
                     out.write(frame);
+                    free.offer(frame);
+                    idleNanos += t1 - t0;
+                    writeNanos += System.nanoTime() - t1;
+                    written++;
                 }
             } catch (Throwable t) {
                 if (error == null) error = "ffmpeg stopped accepting frames: " + t.getMessage() + "\n" + lastLog();
@@ -173,12 +224,17 @@ public final class FFmpegEncoder implements FrameEncoder {
     }
 
     @Override
-    public void encode(ByteBuffer rgba, int width, int height) throws IOException {
+    public void encode(ByteBuffer rgb, int width, int height) throws IOException {
         if (error != null) throw new IOException(error);
-        int size = width * height * 4;
-        byte[] frame = new byte[size];
-        rgba.position(0);
-        rgba.get(frame, 0, size);
+        int size = width * height * BYTES_PER_PIXEL;
+        byte[] frame;
+        try {
+            frame = buffer(size);
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
+        rgb.position(0);
+        rgb.get(frame, 0, size);
         try {
             while (!queue.offer(frame, 200, TimeUnit.MILLISECONDS)) {
                 if (error != null) throw new IOException(error);
@@ -219,14 +275,37 @@ public final class FFmpegEncoder implements FrameEncoder {
     }
 
     @Override
+    public String stats() {
+        double n = Math.max(1, written);
+        return String.format(
+            java.util.Locale.ROOT,
+            "%d frames piped; per frame %.2f ms writing to ffmpeg (ffmpeg busy), %.2f ms waiting for frames",
+            written,
+            writeNanos / n / 1e6,
+            idleNanos / n / 1e6);
+    }
+
+    @Override
     public String getError() {
         return error;
     }
 
-    @SuppressWarnings("unused")
-    private byte[] scratch(int size) {
-        if (scratch == null || scratch.length != size) scratch = new byte[size];
-        return scratch;
+    /**
+     * A free frame buffer: a new one while there are fewer than the queue needs, else the next one ffmpeg is done with.
+     */
+    private byte[] buffer(int size) throws IOException, InterruptedException {
+        while (true) {
+            byte[] b = free.poll();
+            if (b == null && buffers < QUEUED + 2) {
+                buffers++;
+                return new byte[size];
+            }
+            if (b == null) b = free.poll(200, TimeUnit.MILLISECONDS);
+            if (b != null && b.length == size) return b;
+            if (b != null) buffers--;
+            if (error != null) throw new IOException(error);
+            if (!process.isAlive()) throw new IOException("ffmpeg exited unexpectedly\n" + lastLog());
+        }
     }
 
     /** Checks whether ffmpeg can be started. Returns its version line or null. */

@@ -69,6 +69,7 @@ public final class DevDriver {
     private long readOffset;
     private long nextPoll;
     private long waitUntil;
+    private long clockBase;
     private String waitCondition;
     private long waitDeadline;
     private long lastFrame;
@@ -279,6 +280,10 @@ public final class DevDriver {
                     ReplayHandler h = ReplayHandler.get();
                     return h != null && h.getCurrentTick() >= Integer.parseInt(c.substring(5));
                 }
+                if (c.startsWith("rec:")) {
+                    Recorder r = RecordingManager.INSTANCE.getCurrent();
+                    return r != null && r.getTicks() >= Integer.parseInt(c.substring(4));
+                }
                 if (c.startsWith("file:")) {
                     return new File(mc.mcDataDir, c.substring(5)).exists();
                 }
@@ -296,6 +301,12 @@ public final class DevDriver {
             case "until":
                 waitCondition = a[1];
                 waitDeadline = System.currentTimeMillis() + (a.length > 2 ? Long.parseLong(a[2]) : 120000);
+                break;
+            case "clock":
+                clockBase = System.currentTimeMillis();
+                break;
+            case "at":
+                waitUntil = clockBase + Long.parseLong(a[1]);
                 break;
             case "state":
                 log(state());
@@ -861,6 +872,9 @@ public final class DevDriver {
             case "close":
                 mc.displayGuiScreen(null);
                 break;
+            case "export":
+                mc.displayGuiScreen(new com.flurben.flashbacknh.gui.GuiExport(s));
+                break;
             case "invoke": {
                 // no-argument method of the current screen, for shortcuts that read the real modifier keys
                 Method m = s.getClass()
@@ -939,10 +953,20 @@ public final class DevDriver {
         s.width = Integer.parseInt(a[5]);
         s.height = Integer.parseInt(a[6]);
         s.fps = Integer.parseInt(a[7]);
-        s.preset = "veryfast";
+        s.preset = a.length > 8 ? a[8] : "veryfast";
         File outDir = new File(RecordingManager.rootDir(), "exports");
         outDir.mkdirs();
         s.output = new File(outDir, a[2] + (s.format == FFmpegEncoder.Format.PNG ? "" : ".mp4"));
+        // further arguments set settings by name: mp4Layout=FRAGMENTED, ...
+        for (int i = 9; i < a.length; i++) {
+            String[] kv = a[i].split("=", 2);
+            java.lang.reflect.Field f = ExportSettings.class.getField(kv[0]);
+            Class<?> t = f.getType();
+            if (t == int.class) f.setInt(s, Integer.parseInt(kv[1]));
+            else if (t == boolean.class) f.setBoolean(s, Boolean.parseBoolean(kv[1]));
+            else if (t.isEnum()) f.set(s, Enum.valueOf(t.asSubclass(Enum.class), kv[1]));
+            else f.set(s, kv[1]);
+        }
         Exporter.start(h, s);
     }
 

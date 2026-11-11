@@ -21,6 +21,7 @@
     "early.MixinChunk",
     "early.MixinEffectRenderer",
     "early.MixinEntityRenderer",
+    "early.MixinGameSettings",
     "early.MixinGuiIngame",
     "early.MixinMinecraft",
     "early.MixinNetHandlerPlayClient",

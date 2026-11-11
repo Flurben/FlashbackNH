@@ -46,6 +46,10 @@ public final class Config {
     public static int dhLodWaitSeconds = 6;
     public static String exportFormat = "MP4";
     public static String exportPreset = "medium";
+    public static String exportMp4Layout = "STANDARD";
+    public static String exportEncoder = "AUTO";
+    public static boolean exportAsyncReadback = true;
+    public static int exportPngCompression = 4;
     public static String exportFilename = "%replay%-%date%-%time%";
     public static int exportExtraFrames = 0;
     public static boolean exportWaitForChunks = true;
@@ -164,6 +168,31 @@ public final class Config {
             "Default export format.",
             new String[] { "MP4", "MKV", "WEBM", "MOV_PRORES", "GIF", "PNG" });
         exportPreset = c.getString("preset", CAT_EXPORT, exportPreset, "x264 preset (ultrafast..veryslow).");
+        exportEncoder = c.getString(
+            "encoder",
+            CAT_EXPORT,
+            exportEncoder,
+            "Video encoder for MP4 and MKV. AUTO uses the graphics card's or processor's encoder when ffmpeg can use one (much faster), else LIBX264 on the CPU. If a hardware encoder fails its test at the start of an export, the export uses LIBX264.",
+            new String[] { "AUTO", "LIBX264", "H264_NVENC", "HEVC_NVENC", "H264_QSV", "H264_AMF",
+                "H264_VIDEOTOOLBOX" });
+        exportAsyncReadback = c.getBoolean(
+            "asyncReadback",
+            CAT_EXPORT,
+            exportAsyncReadback,
+            "Read exported frames from the graphics card without waiting for it (pixel buffer objects), so the next frame renders while the last one is copied. Turn off if exports show wrong or repeated frames with your driver.");
+        exportPngCompression = c.getInt(
+            "pngCompression",
+            CAT_EXPORT,
+            exportPngCompression,
+            -1,
+            9,
+            "Compression of PNG sequence exports: 0 (fastest, largest files) to 9 (smallest, slowest). -1 uses Java's default. The images are the same at every level.");
+        exportMp4Layout = c.getString(
+            "mp4Layout",
+            CAT_EXPORT,
+            exportMp4Layout,
+            "Where MP4 exports keep their index. STANDARD: at the end, works everywhere and finishes at once. FRAGMENTED: in pieces, finishes at once and survives a crash mid-export, but some older editors read it badly. FASTSTART: at the start, for web playback, but the whole file is rewritten when the export ends.",
+            new String[] { "STANDARD", "FRAGMENTED", "FASTSTART" });
         exportFilename = c.getString(
             "filename",
             CAT_EXPORT,

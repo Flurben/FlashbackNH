@@ -72,6 +72,23 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
   loading in.
 - Optional extra frames per saved frame for shader packs that use temporal accumulation (TAA).
 - Speed keyframes, optional hidden nametags, progress display, ESC to cancel.
+- Exports run as fast as the encoder allows: vsync and the frame limit are turned off while exporting and restored
+  afterwards (your `options.txt` keeps your own values), frames are read back from the GPU without waiting for it, and
+  frame memory is reused instead of allocated per frame.
+- **Encoder** (MP4 and MKV): *Auto* (default) uses the graphics card's or processor's video encoder when ffmpeg can use
+  one, else x264 on the CPU. You can also pick x264, NVENC H.264, NVENC HEVC, Intel QSV, AMD AMF or VideoToolbox. Which
+  hardware encoders work is checked once per session by encoding a test frame with each. If the chosen hardware encoder
+  fails its test at the start of an export, the export uses x264 and says so. Quality follows the CRF setting; the
+  hardware encoders' quality settings are matched to x264 at the same CRF (see Known limits below). The x264 preset
+  only applies to x264.
+- **MP4 index** (MP4 only): *Standard* (default) puts the index at the end of the file, which every player and editor
+  reads and which needs no extra work when the export ends. *Fragmented* also finishes at once and leaves a playable file
+  if the game crashes mid-export, but some older editors read fragmented MP4 badly. *Fast start (web)* puts the index at
+  the start for playback in a browser before the file has downloaded; ffmpeg rewrites the whole file once to do that.
+- PNG sequences are written by all CPU cores but one. `pngCompression` in the config sets the zlib level (0 to 9,
+  default 4); the images are identical at every level, only file size and speed change.
+- The game log gets a timing summary after each export (time per frame in rendering, readback, handing frames to the
+  encoder, and the encoder's own wait), which helps to see what limits an export on your machine.
 
 ## Shaders and rendering compatibility
 
@@ -145,6 +162,10 @@ results read from screenshots, exported files and logs.
 - Distant Horizons, singleplayer overworld: LODs at replay open, after seeking both ways, in an MP4 export, and live
   again afterwards. A checksum of the real LOD database did not change between opening and exiting the replay. The same
   with Complementary Reimagined r5.7.1 and r5.9.3, the latter also with exports at the window size.
+- Export speed (0.3.0), 10-minute replay at 1920x1080, 60 FPS, MP4, CRF 18, with vsync on in the game options: 113 s
+  (318 FPS) with Auto (NVENC H.264) against 602 s before, all 36,000 frames in order and the right way up. x264 1-minute
+  exports ran at 175-185 FPS. The hardware encoder fallback (AMF chosen on an NVIDIA machine) exported with x264; vsync
+  and the frame limit in `options.txt` were unchanged afterwards; PNG sequences had every frame.
 - 0.2.0 features: a GregTech cape (given the way GregTech gives it) and a downloaded cape on the recording player in
   replays and an MP4 export; weather keyframes (rain and thunder strength in between keyframes); orbit and follow
   presets during playback (orbit radius within 0.02 blocks, camera aimed at the target) and in an MP4 export; the
@@ -162,6 +183,9 @@ results read from screenshots, exported files and logs.
 - Dragging number boxes and sliders with a real mouse (typing into them was tested), Look At presets, presets on
   mobs, and capes of other players on a server.
 - Export formats other than MP4 and PNG, cancelling an export with ESC, and other shader packs.
+- The AMD AMF and Apple VideoToolbox encoders: their quality settings are an estimate, not measured. NVENC and Intel
+  QSV were measured on one machine (RTX 4070 Ti SUPER, i7-13700K).
+- Export speed with shader packs and with Distant Horizons since the 0.3.0 speed work.
 - Long recordings, large bases, public servers and other versions of the pack.
 - Distant Horizons on servers, across dimension changes, with other DH or Angelica versions, or with large databases.
 - Other addons. FalseTweaks 4.4.5 crashed at startup in the pack with FlashbackNH installed; the cause was not determined.
