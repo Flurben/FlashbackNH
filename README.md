@@ -65,6 +65,22 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
 
 ### Export
 - Renders the replay frame by frame at any resolution and framerate, independent of your real FPS.
+- The export screen (Ctrl+E) is laid out like the deliver page of a video editor, in the editor's own style:
+  - **Render Settings** on the left: a strip of preset tiles, then Video (format, encoder, resolution, frame rate,
+    quality), File (file name, export range, speed keyframes) and Advanced tabs.
+  - **Viewer** in the middle: the replay as the export frames it, cropped to the export's aspect ratio.
+  - **Output** on the right: the estimated file size and export time, length, frame count, encoder and bitrate, and
+    the Render button (Ctrl+Enter).
+  - **Timeline** at the bottom: drag the yellow handles to set the range, click to move the playhead, play/pause.
+- **Presets**: YouTube 1080p, YouTube 4K, Shorts / TikTok (vertical), Quick Preview, Editing (ProRes), PNG Frames and
+  GIF come built in. *Save as* saves the current settings as your own preset; right-click a tile to use, update,
+  rename, duplicate or delete it. When the settings no longer match the chosen preset it says *(modified)*. Your
+  presets are kept in `.minecraft/flashbacknh/export-presets.json` and shared by all replays. Presets hold how a video
+  is made, not which part of which replay.
+- **Estimates**: size and time start from FlashbackNH's own measured exports (see the 0.3.0 release notes) scaled to
+  your settings. After each finished export of at least 5 seconds, the real time per frame and size per frame are
+  stored for that encoder (`export-stats.json`), and later estimates use them. Size depends mostly on how much moves
+  on screen, so it is shown with a range. *Reset estimates* in the Advanced tab forgets what was learned.
 - Formats: MP4/MKV (H.264), WebM (VP9), MOV (ProRes 422 HQ), GIF (via ffmpeg) and PNG image sequences (built in, no
   external tools needed).
 - Waits for chunk building before saving each frame (vanilla renderer and Angelica 2.1.16). The Angelica 1.0.0-beta66b
@@ -162,6 +178,10 @@ results read from screenshots, exported files and logs.
 - Distant Horizons, singleplayer overworld: LODs at replay open, after seeking both ways, in an MP4 export, and live
   again afterwards. A checksum of the real LOD database did not change between opening and exiting the replay. The same
   with Complementary Reimagined r5.7.1 and r5.9.3, the latter also with exports at the window size.
+- Export screen (0.3.0): the layout at GUI scales 2 and 4, dropdowns, tabs, typing a preset name and an end tick,
+  saving, renaming, duplicating and deleting presets, starting an export with the Render button, and the estimate
+  switching to the learned numbers after that export. Before learning, it estimated 1.8 GB and 1 min 56 s for the
+  10-minute NVENC export, which took 1.6 GB and 1 min 53 s.
 - Export speed (0.3.0), 10-minute replay at 1920x1080, 60 FPS, MP4, CRF 18, with vsync on in the game options: 113 s
   (318 FPS) with Auto (NVENC H.264) against 602 s before, all 36,000 frames in order and the right way up. x264 1-minute
   exports ran at 175-185 FPS. The hardware encoder fallback (AMF chosen on an NVIDIA machine) exported with x264; vsync
@@ -183,6 +203,8 @@ results read from screenshots, exported files and logs.
 - Dragging number boxes and sliders with a real mouse (typing into them was tested), Look At presets, presets on
   mobs, and capes of other players on a server.
 - Export formats other than MP4 and PNG, cancelling an export with ESC, and other shader packs.
+- The export screen with a real mouse and keyboard (the harness clicks and types into it directly), and estimates on
+  other machines before they have learned from an export there.
 - The AMD AMF and Apple VideoToolbox encoders: their quality settings are an estimate, not measured. NVENC and Intel
   QSV were measured on one machine (RTX 4070 Ti SUPER, i7-13700K).
 - Export speed with shader packs and with Distant Horizons since the 0.3.0 speed work.

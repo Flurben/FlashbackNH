@@ -50,7 +50,17 @@ final class ExportStats {
         frameStart = -1;
     }
 
+    private long firstSaved = -1, lastSaved;
+
+    /** Wall time per saved frame from the first saved frame to the last, warm-up and start excluded. */
+    double msPerFrame() {
+        if (savedFrames < 2 || firstSaved < 0) return 0;
+        return (lastSaved - firstSaved) / 1e6 / (savedFrames - 1);
+    }
+
     void saved(long renderedAt, long readDone, long encodeDone) {
+        if (firstSaved < 0) firstSaved = encodeDone;
+        lastSaved = encodeDone;
         readback += readDone - renderedAt;
         encode += encodeDone - readDone;
         savedFrames++;

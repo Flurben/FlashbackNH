@@ -1,5 +1,6 @@
 package com.flurben.flashbacknh.client;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.entity.RenderManager;
 
@@ -19,8 +20,11 @@ public final class CameraPathRenderer {
 
     public static void render(float partialTicks) {
         ReplayHandler h = ReplayHandler.get();
-        if (h == null || Exporter.isExporting() || !h.editor.visuals.showCameraPath || GuiReplayEditor.isUiHidden())
-            return;
+        // nor in the export screen's viewer, which shows what an export would look like
+        if (h == null || Exporter.isExporting()
+            || !h.editor.visuals.showCameraPath
+            || GuiReplayEditor.isUiHidden()
+            || Minecraft.getMinecraft().currentScreen instanceof com.flurben.flashbacknh.gui.GuiExport) return;
         KeyframeTrack track = h.editor.track(TrackType.CAMERA);
         if (track.keyframes.isEmpty()) return;
         double cx = RenderManager.renderPosX, cy = RenderManager.renderPosY, cz = RenderManager.renderPosZ;

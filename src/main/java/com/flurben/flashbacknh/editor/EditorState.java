@@ -100,5 +100,14 @@ public final class EditorState {
         public String filename = null;
         public boolean hideNametags = false;
         public boolean useSpeedTrack = true;
+        /** Settings added in 0.3.0; null or -1 in older replays, which then use the config's defaults. */
+        public String encoder = null;
+        public String x264Preset = null;
+        public String mp4Layout = null;
+        public int pngCompression = -2;
+        public int extraFrames = -1;
+        public Boolean waitForChunks = null;
+        /** The export preset last chosen for this replay, null for custom settings. */
+        public String preset = null;
     }
 }

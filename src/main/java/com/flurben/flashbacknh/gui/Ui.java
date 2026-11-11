@@ -8,6 +8,7 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.util.ChatAllowedCharacters;
 
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -43,6 +44,8 @@ public final class Ui {
 
     private final List<Click> clicks = new ArrayList<>();
     public int mouseX, mouseY;
+    /** Where the click that {@link #clicked} last took was. */
+    public int clickX, clickY;
     public String tooltip;
     private int scrollDelta;
 
@@ -60,6 +63,18 @@ public final class Ui {
     private boolean pressDragged;
     private String lastClickId;
     private long lastClickTime;
+    /** The text field being typed into keeps letters, not only digits. */
+    private boolean editIsText;
+    private int editMaxLength;
+    /** Set for one frame when typing was accepted with Enter. */
+    public boolean enterPressed;
+
+    /** The open dropdown list, and the pick made in it, which its dropdown takes when it is drawn next. */
+    private String dropId;
+    private List<String> dropItems;
+    private int dropX, dropY, dropW, dropSelected;
+    private String pickedId;
+    private int picked;
 
     public FontRenderer font() {
         return Minecraft.getMinecraft().fontRenderer;
@@ -86,6 +101,8 @@ public final class Ui {
         for (Click c : clicks) any |= !c.consumed;
         clicks.clear();
         scrollDelta = 0;
+        // keys arrive between frames, after end and before begin, so Enter stays set for the frame that follows it
+        enterPressed = false;
         // a number that is no longer drawn (its panel closed) stops being typed into
         if (editId != null && !editSeen) stopEditing();
         if (pressId != null && !Mouse.isButtonDown(0)) pressId = null;
@@ -104,6 +121,7 @@ public final class Ui {
             stopEditing();
         } else if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER || key == Keyboard.KEY_TAB) {
             editCommit = true;
+            if (key != Keyboard.KEY_TAB) enterPressed = true;
         } else if (key == Keyboard.KEY_BACK) {
             if (editFresh) editText = "";
             else if (!editText.isEmpty()) editText = editText.substring(0, editText.length() - 1);
@@ -111,6 +129,12 @@ public final class Ui {
         } else if (key == Keyboard.KEY_A && GuiScreen.isCtrlKeyDown()) {
             editText = "";
             editFresh = false;
+        } else if (editIsText) {
+            if (ChatAllowedCharacters.isAllowedCharacter(c)) {
+                if (editFresh) editText = "";
+                editFresh = false;
+                if (editText.length() < editMaxLength) editText += c;
+            }
         } else if ((c >= '0' && c <= '9') || c == '.' || c == ',' || c == '-' || c == '+') {
             if (editFresh) editText = "";
             editFresh = false;
@@ -119,6 +143,7 @@ public final class Ui {
     }
 
     private void startEditing(String id, double value, String format) {
+        editIsText = false;
         editId = id;
         editText = String.format(format, value)
             .replaceAll("[^0-9.,+-]", "")
@@ -267,6 +292,155 @@ public final class Ui {
         return value;
     }
 
+    /**
+     * A text field: click to type, Enter or a click elsewhere to accept, Escape to cancel. Returns the accepted text,
+     * or the value while typing.
+     */
+    public String textField(String id, String value, int x, int y, int w, int h, int maxLength, String placeholder) {
+        if (id.equals(editId)) {
+            editSeen = true;
+            rect(x, y, w, h, 0xFF101014);
+            outline(x, y, w, h, ACCENT);
+            boolean caret = System.currentTimeMillis() / 500 % 2 == 0;
+            String shown = editText + (caret ? "_" : " ");
+            int tw = width(shown);
+            int tx = tw > w - 6 ? x + w - 3 - tw : x + 3;
+            if (editFresh && !editText.isEmpty()) rect(tx - 1, y + 1, width(editText) + 1, h - 2, ACTIVE);
+            text(shown, tx, y + (h - 8) / 2, TEXT);
+            if (clickedOutside(x, y, w, h)) editCommit = true;
+            block(x, y, w, h);
+            if (!editCommit) return value;
+            String typed = editText;
+            stopEditing();
+            return typed;
+        }
+        boolean hover = hovered(x, y, w, h);
+        if (clicked(x, y, w, h, 0)) focusText(id, value, maxLength);
+        rect(x, y, w, h, 0xFF101014);
+        outline(x, y, w, h, hover ? ACCENT : BORDER);
+        boolean empty = value == null || value.isEmpty();
+        text(trim(empty ? placeholder : value, w - 6), x + 3, y + (h - 8) / 2, empty ? TEXT_DIM : TEXT);
+        if (hover && tooltip == null) tooltip = "Click to type";
+        return value;
+    }
+
+    /** Starts typing into a text field, as if it had been clicked. */
+    public void focusText(String id, String value, int maxLength) {
+        editId = id;
+        editIsText = true;
+        editMaxLength = maxLength;
+        editText = value == null ? "" : value;
+        editCommit = false;
+        editFresh = true;
+        editSeen = true;
+        Keyboard.enableRepeatEvents(true);
+    }
+
+    /**
+     * A dropdown: shows the item at index and opens its list on click. Returns the index picked, or index. The list
+     * is drawn by {@link #drawPopups} and takes clicks first through {@link #popupClicks}.
+     */
+    public int dropdown(String id, List<String> items, int index, int x, int y, int w, int h, boolean enabled,
+        String tip) {
+        if (id.equals(pickedId)) {
+            pickedId = null;
+            index = picked;
+        }
+        boolean open = id.equals(dropId);
+        boolean hover = enabled && hovered(x, y, w, h);
+        rect(x, y, w, h, !enabled ? 0xFF1A1A20 : open ? ACTIVE : hover ? HOVER : PANEL_LIGHT);
+        outline(x, y, w, h, open || hover ? ACCENT : BORDER);
+        String label = index >= 0 && index < items.size() ? items.get(index) : "";
+        text(trim(label, w - 14), x + 4, y + (h - 8) / 2, enabled ? TEXT : TEXT_DIM);
+        // a small down arrow
+        int ax = x + w - 9, ay = y + h / 2 - 1;
+        int ac = enabled ? TEXT_DIM : BORDER;
+        rect(ax, ay, 5, 1, ac);
+        rect(ax + 1, ay + 1, 3, 1, ac);
+        rect(ax + 2, ay + 2, 1, 1, ac);
+        if (hover && tip != null) tooltip = tip;
+        if (enabled && clicked(x, y, w, h, 0)) {
+            dropId = id;
+            dropItems = items;
+            dropX = x;
+            dropY = y + h;
+            dropW = w;
+            dropSelected = index;
+        }
+        return index;
+    }
+
+    /** Opens a list of actions at a point, like a context menu. The pick comes back from {@link #takePick}. */
+    public void openMenu(String id, List<String> items, int x, int y) {
+        dropId = id;
+        dropItems = items;
+        dropX = x;
+        dropY = y;
+        dropW = 60;
+        dropSelected = -1;
+    }
+
+    /** The item picked in the menu opened with this id, or -1. */
+    public int takePick(String id) {
+        if (!id.equals(pickedId)) return -1;
+        pickedId = null;
+        return picked;
+    }
+
+    /** Whether a dropdown list is open. */
+    public boolean popupOpen() {
+        return dropId != null;
+    }
+
+    public void closePopups() {
+        dropId = null;
+    }
+
+    private int[] dropRect(int screenW, int screenH) {
+        int w = dropW;
+        for (String s : dropItems) w = Math.max(w, width(s) + 12);
+        int h = dropItems.size() * 12 + 2;
+        int x = Math.max(0, Math.min(dropX, screenW - w - 1));
+        int y = dropY + h > screenH ? Math.max(0, dropY - h - 14) : dropY;
+        return new int[] { x, y, w, h };
+    }
+
+    /** Resolves clicks on an open dropdown list before any widget sees them. Call right after {@link #begin}. */
+    public void popupClicks(int screenW, int screenH) {
+        if (dropId == null) return;
+        int[] r = dropRect(screenW, screenH);
+        for (int i = 0; i < dropItems.size(); i++) {
+            if (clicked(r[0], r[1] + 1 + i * 12, r[2], 12, 0)) {
+                pickedId = dropId;
+                picked = i;
+                dropId = null;
+                return;
+            }
+        }
+        if (hasPendingClick()) {
+            // a click anywhere else only closes the list
+            block(0, 0, screenW, screenH);
+            dropId = null;
+        }
+    }
+
+    /** Draws an open dropdown list over everything. Call last. */
+    public void drawPopups(int screenW, int screenH) {
+        if (dropId == null) return;
+        int[] r = dropRect(screenW, screenH);
+        rect(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, BORDER);
+        rect(r[0], r[1], r[2], r[3], 0xF8141418);
+        for (int i = 0; i < dropItems.size(); i++) {
+            int iy = r[1] + 1 + i * 12;
+            boolean hover = hovered(r[0], iy, r[2], 12);
+            if (hover) rect(r[0], iy, r[2], 12, HOVER);
+            if (i == dropSelected) rect(r[0], iy, 2, 12, ACCENT);
+            text(dropItems.get(i), r[0] + 6, iy + 2, i == dropSelected ? TEXT : 0xFFC8C8D2);
+        }
+        // no tooltips from widgets under the list
+        if (mouseX >= r[0] && mouseX < r[0] + r[2] && mouseY >= r[1] && mouseY < r[1] + r[3]) tooltip = null;
+    }
+
     /** A labelled {@link #slider} filling one panel row. */
     public double sliderRow(String label, double value, double min, double max, double step, String format, int x,
         int y, int w) {
@@ -283,6 +457,25 @@ public final class Ui {
         return number(label + "@" + x, value, step, min, max, format, x + lw + 4, y, w - lw - 4, 11);
     }
 
+    /**
+     * Takes the clicks and scroll of this frame away from the widgets drawn next, for a dialog drawn on top that
+     * must get them instead. Give them back with {@link #releaseInput}.
+     */
+    public Object holdInput() {
+        Object[] held = { new ArrayList<>(clicks), scrollDelta };
+        clicks.clear();
+        scrollDelta = 0;
+        return held;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void releaseInput(Object held) {
+        Object[] h = (Object[]) held;
+        clicks.clear();
+        clicks.addAll((List<Click>) h[0]);
+        scrollDelta = (Integer) h[1];
+    }
+
     public boolean hasPendingClick() {
         for (Click c : clicks) if (!c.consumed) return true;
         return false;
@@ -297,6 +490,8 @@ public final class Ui {
         for (Click c : clicks) {
             if (!c.consumed && c.button == button && c.x >= x && c.x < x + w && c.y >= y && c.y < y + h) {
                 c.consumed = true;
+                clickX = c.x;
+                clickY = c.y;
                 return true;
             }
         }

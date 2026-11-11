@@ -80,7 +80,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         this.handler = handler;
         this.settings = settings;
         this.encoder = encoder;
-        this.totalFrames = countFrames();
+        this.totalFrames = countFrames(handler, settings);
     }
 
     public static void start(ReplayHandler handler, ExportSettings settings) throws IOException {
@@ -124,17 +124,22 @@ public final class Exporter implements ReplayHandler.ClockDriver {
         return VideoEncoders.Choice.LIBX264;
     }
 
-    private int countFrames() {
+    /** How many frames an export of these settings saves, speed keyframes included. */
+    public static int countFrames(ReplayHandler handler, ExportSettings settings) {
         double t = settings.startTick;
         int n = 0;
         while (t <= settings.endTick && n < 10_000_000) {
             n++;
-            t = step(t);
+            t = step(handler, settings, t);
         }
         return n;
     }
 
     private double step(double t) {
+        return step(handler, settings, t);
+    }
+
+    private static double step(ReplayHandler handler, ExportSettings settings, double t) {
         double speed = 1.0;
         KeyframeTrack track = handler.editor.track(TrackType.SPEED);
         if (settings.useSpeedTrack && track.isActive()) speed = Math.max(0.01, track.evaluate(t)[0]);
@@ -419,6 +424,7 @@ public final class Exporter implements ReplayHandler.ClockDriver {
                 encoder.close();
                 stats.finish = System.nanoTime() - closing;
                 stats.log("finished", encoder.stats());
+                ExportEstimator.record(settings, stats.msPerFrame(), outputSize(out), stats.savedFrames);
                 Notifications.show("Export finished", out.getName(), 8000);
                 ChatComponentText msg = new ChatComponentText("[FlashbackNH] Export saved: ");
                 ChatComponentText link = new ChatComponentText(out.getName());
@@ -438,6 +444,15 @@ public final class Exporter implements ReplayHandler.ClockDriver {
             }
         }, "FlashbackNH export finish");
         t.start();
+    }
+
+    /** Bytes written: the video file, or all images of a PNG sequence. */
+    private static long outputSize(File out) {
+        if (out.isFile()) return out.length();
+        long sum = 0;
+        File[] files = out.listFiles();
+        if (files != null) for (File f : files) sum += f.length();
+        return sum;
     }
 
     public void cancel(String message) {
