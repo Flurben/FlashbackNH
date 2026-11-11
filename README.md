@@ -186,6 +186,8 @@ results read from screenshots, exported files and logs.
   (318 FPS) with Auto (NVENC H.264) against 602 s before, all 36,000 frames in order and the right way up. x264 1-minute
   exports ran at 175-185 FPS. The hardware encoder fallback (AMF chosen on an NVIDIA machine) exported with x264; vsync
   and the frame limit in `options.txt` were unchanged afterwards; PNG sequences had every frame.
+- GregTech and AE2 in recordings started mid-session (0.3.1), singleplayer: an LV input hatch kept its machine and
+  texture, and a row of fluix cables stayed connected in the replay.
 - 0.2.0 features: a GregTech cape (given the way GregTech gives it) and a downloaded cape on the recording player in
   replays and an MP4 export; weather keyframes (rain and thunder strength in between keyframes); orbit and follow
   presets during playback (orbit radius within 0.02 blocks, camera aimed at the target) and in an MP4 export; the
