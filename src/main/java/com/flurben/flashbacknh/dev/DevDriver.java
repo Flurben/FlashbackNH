@@ -114,13 +114,17 @@ public final class DevDriver {
     private void wear(final String[] a) {
         final String name = mc.thePlayer.getCommandSenderName();
         final int slot = Integer.parseInt(a[2]);
-        String[] id = a[3].split(":", 2);
-        net.minecraft.item.Item item = cpw.mods.fml.common.registry.GameRegistry.findItem(id[0], id[1]);
-        if (item == null) {
-            log("wear: no item " + a[3]);
-            return;
+        final net.minecraft.item.ItemStack stack;
+        if (a[3].equals("none")) stack = null;
+        else {
+            String[] id = a[3].split(":", 2);
+            net.minecraft.item.Item item = cpw.mods.fml.common.registry.GameRegistry.findItem(id[0], id[1]);
+            if (item == null) {
+                log("wear: no item " + a[3]);
+                return;
+            }
+            stack = new net.minecraft.item.ItemStack(item, 1, Integer.parseInt(a[4]));
         }
-        final net.minecraft.item.ItemStack stack = new net.minecraft.item.ItemStack(item, 1, Integer.parseInt(a[4]));
         com.flurben.flashbacknh.util.ServerTasks.schedule(() -> {
             try {
                 net.minecraft.entity.player.EntityPlayerMP p = net.minecraft.server.MinecraftServer.getServer()
@@ -164,6 +168,17 @@ public final class DevDriver {
                             .invoke(bp, stack);
                         prop.getMethod("sync", net.minecraft.entity.player.EntityPlayer.class)
                             .invoke(null, p);
+                        break;
+                    }
+                    case "backpack": {
+                        // the worn (personal) backpack of the Backpacks mod
+                        Class<?> save = Class.forName("de.eydamos.backpack.saves.PlayerSave");
+                        Object ps = save.getConstructor(net.minecraft.entity.player.EntityPlayer.class)
+                            .newInstance(p);
+                        save.getMethod("setPersonalBackpack", net.minecraft.item.ItemStack.class)
+                            .invoke(ps, stack);
+                        save.getMethod("save")
+                            .invoke(ps);
                         break;
                     }
                     default:

@@ -208,7 +208,8 @@ results read from screenshots, exported files and logs.
   shaders.
 - Worn items (0.4.0), singleplayer, recording started mid-session: a Botania cosmetic, an Extra Utilities angel ring,
   Galacticraft oxygen gear and tanks, an Adventure Backpack, and a Backhand offhand item put on after the recording
-  started all show on the player in the replay as they did live. Galacticraft draws the oxygen mask only on your own
+  started all show on the player in the replay as they did live. So does a worn backpack from the Backpacks mod, in
+  its colour when the recording started and in a new colour after it was swapped during the recording. Galacticraft draws the oxygen mask only on your own
   player, so it shows live in third person but not in the replay, the same as other players see you on a server.
 - Camera easing and undo (0.4.0): unit tests for speed without jumps at keyframes and next to Linear segments, starting
   and ending at rest, ease settings, and the default ease giving the same curve as before; in the editor, the ease
@@ -229,7 +230,7 @@ results read from screenshots, exported files and logs.
 - Export speed with shader packs and with Distant Horizons since the 0.3.0 speed work.
 - Long recordings, large bases, public servers and other versions of the pack.
 - Distant Horizons on servers, across dimension changes, with other DH or Angelica versions, or with large databases.
-- Worn items on a server, of other players, and the Backpacks mod's worn backpack (supported but not tried). Cosmetic
+- Worn items on a server, and of other players. Cosmetic
   armor mods that are not in GTNH, such as Cosmetic Armor, are not supported.
 - Other addons. FalseTweaks 4.4.5 crashed at startup in the pack with FlashbackNH installed; the cause was not determined.
 
