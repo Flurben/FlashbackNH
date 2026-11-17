@@ -22,6 +22,7 @@ import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.MathHelper;
 
 import com.flurben.flashbacknh.FlashbackNH;
+import com.flurben.flashbacknh.compat.WornItems;
 import com.flurben.flashbacknh.format.ReplayFormat;
 import com.flurben.flashbacknh.mixins.early.AccessorPlayerControllerMP;
 import com.flurben.flashbacknh.net.PacketBuilder;
@@ -52,6 +53,7 @@ public final class LocalPlayerRecorder {
     private int ticksSinceMove;
     private int lastHotbarHash;
     private int lastDimension = Integer.MIN_VALUE;
+    private net.minecraft.nbt.NBTTagCompound lastWorn;
 
     public LocalPlayerRecorder(Recorder recorder, GameProfile profile) {
         this.recorder = recorder;
@@ -121,6 +123,10 @@ public final class LocalPlayerRecorder {
                 packet(new S04PacketEntityEquipment(id, slot, cur == null ? null : cur.copy()));
             }
         }
+
+        // What other mods have the player wear: their servers do not always send it to the player it belongs to
+        net.minecraft.nbt.NBTTagCompound worn = WornItems.save(p);
+        if (worn != null && !worn.equals(lastWorn)) writeWorn(p, worn);
 
         // Arm swing
         if (p.isSwingInProgress && p.swingProgressInt == 0) {
@@ -203,6 +209,8 @@ public final class LocalPlayerRecorder {
             equipment[slot] = cur == null ? null : cur.copy();
             if (cur != null) packet(new S04PacketEntityEquipment(id, slot, cur.copy()));
         }
+        net.minecraft.nbt.NBTTagCompound worn = WornItems.save(p);
+        if (worn != null) writeWorn(p, worn);
         lastRiding = -2;
         lastSleeping = false;
         lastHurtTime = p.hurtTime;
@@ -211,6 +219,12 @@ public final class LocalPlayerRecorder {
         watchedHash = 0;
         lastHotbarHash = 0;
         writeMove(p);
+    }
+
+    private void writeWorn(EntityClientPlayerMP p, net.minecraft.nbt.NBTTagCompound worn) throws IOException {
+        lastWorn = worn;
+        byte[] data = WornItems.record(p);
+        if (data != null) recorder.writeRaw(ReplayFormat.REC_WORN, data);
     }
 
     private void writeMove(EntityClientPlayerMP p) throws IOException {

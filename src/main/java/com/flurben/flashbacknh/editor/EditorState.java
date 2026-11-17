@@ -8,6 +8,7 @@ import java.util.Map;
 import com.flurben.flashbacknh.format.ReplayMeta;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 
 /** Everything the user edits in a replay. Saved as editor.json inside the replay archive. */
 public final class EditorState {
@@ -75,6 +76,29 @@ public final class EditorState {
 
     public String toJson() {
         return GSON.toJson(this);
+    }
+
+    /** What undo and redo cover: everything but the timeline view and the export settings, which have their own. */
+    String historyJson() {
+        JsonObject o = GSON.toJsonTree(this)
+            .getAsJsonObject();
+        o.remove("export");
+        o.remove("zoomTicks");
+        o.remove("scrollTick");
+        o.remove("version");
+        return o.toString();
+    }
+
+    /** Puts back a state from {@link #historyJson}. */
+    void restoreHistory(String json) {
+        EditorState s = fromJson(json);
+        tracks = s.tracks;
+        inPoint = s.inPoint;
+        outPoint = s.outPoint;
+        visuals = s.visuals;
+        markers = s.markers;
+        rigs = s.rigs;
+        ensureTracks();
     }
 
     public static EditorState fromJson(String json) {

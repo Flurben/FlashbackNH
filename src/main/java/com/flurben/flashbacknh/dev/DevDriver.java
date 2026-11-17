@@ -107,6 +107,76 @@ public final class DevDriver {
         log("tiledump " + name + " " + lines.size());
     }
 
+    /**
+     * wear <baubles|backhand|galacticraft|adventurebackpack> <slot> <modid:item> <meta>: puts an item where that mod
+     * keeps worn items, on the integrated server, so the mod syncs it the way it would in play.
+     */
+    private void wear(final String[] a) {
+        final String name = mc.thePlayer.getCommandSenderName();
+        final int slot = Integer.parseInt(a[2]);
+        String[] id = a[3].split(":", 2);
+        net.minecraft.item.Item item = cpw.mods.fml.common.registry.GameRegistry.findItem(id[0], id[1]);
+        if (item == null) {
+            log("wear: no item " + a[3]);
+            return;
+        }
+        final net.minecraft.item.ItemStack stack = new net.minecraft.item.ItemStack(item, 1, Integer.parseInt(a[4]));
+        com.flurben.flashbacknh.util.ServerTasks.schedule(() -> {
+            try {
+                net.minecraft.entity.player.EntityPlayerMP p = net.minecraft.server.MinecraftServer.getServer()
+                    .getConfigurationManager()
+                    .func_152612_a(name);
+                switch (a[1]) {
+                    case "baubles": {
+                        Object inv = Class.forName("baubles.common.lib.PlayerHandler")
+                            .getMethod("getPlayerBaubles", net.minecraft.entity.player.EntityPlayer.class)
+                            .invoke(null, p);
+                        ((net.minecraft.inventory.IInventory) inv).setInventorySlotContents(slot, stack);
+                        inv.getClass()
+                            .getMethod("syncSlotToClients", int.class)
+                            .invoke(inv, slot);
+                        break;
+                    }
+                    case "backhand":
+                        Class.forName("xonin.backhand.api.core.BackhandUtils")
+                            .getMethod(
+                                "setPlayerOffhandItem",
+                                net.minecraft.entity.player.EntityPlayer.class,
+                                net.minecraft.item.ItemStack.class)
+                            .invoke(null, p, stack);
+                        break;
+                    case "galacticraft": {
+                        Object stats = Class.forName("micdoodle8.mods.galacticraft.core.entities.player.GCPlayerStats")
+                            .getMethod("get", net.minecraft.entity.player.EntityPlayerMP.class)
+                            .invoke(null, p);
+                        Object inv = stats.getClass()
+                            .getField("extendedInventory")
+                            .get(stats);
+                        ((net.minecraft.inventory.IInventory) inv).setInventorySlotContents(slot, stack);
+                        break;
+                    }
+                    case "adventurebackpack": {
+                        Class<?> prop = Class
+                            .forName("com.darkona.adventurebackpack.playerProperties.BackpackProperty");
+                        Object bp = prop.getMethod("get", net.minecraft.entity.player.EntityPlayer.class)
+                            .invoke(null, p);
+                        prop.getMethod("setWearable", net.minecraft.item.ItemStack.class)
+                            .invoke(bp, stack);
+                        prop.getMethod("sync", net.minecraft.entity.player.EntityPlayer.class)
+                            .invoke(null, p);
+                        break;
+                    }
+                    default:
+                        log("wear: unknown " + a[1]);
+                        return;
+                }
+                log("wear " + a[1] + " " + slot + " " + stack);
+            } catch (Throwable t) {
+                log("wear failed: " + t);
+            }
+        });
+    }
+
     /** Writes a summary of every chunk and entity, to compare two ways of arriving at the same tick. */
     private void dumpWorld(String name, int blockX, int blockZ) throws IOException {
         long start = System.nanoTime();
@@ -347,6 +417,64 @@ public final class DevDriver {
                 break;
             case "key":
                 key(a[1], a[2].equals("down"));
+                break;
+            case "view":
+                mc.gameSettings.thirdPersonView = Integer.parseInt(a[1]);
+                break;
+            case "wear":
+                wear(a);
+                break;
+            case "clone": {
+                // clone <dx> <dz>: a remote player like the local one, the way other players look in multiplayer
+                net.minecraft.client.entity.EntityOtherPlayerMP c = new net.minecraft.client.entity.EntityOtherPlayerMP(
+                    mc.theWorld,
+                    mc.thePlayer.getGameProfile());
+                c.setPositionAndRotation(
+                    mc.thePlayer.posX + Double.parseDouble(a[1]),
+                    mc.thePlayer.boundingBox.minY,
+                    mc.thePlayer.posZ + Double.parseDouble(a[2]),
+                    mc.thePlayer.rotationYaw,
+                    0);
+                c.rotationYawHead = mc.thePlayer.rotationYaw;
+                for (int s = 0; s < 5; s++) c.setCurrentItemOrArmor(s, mc.thePlayer.getEquipmentInSlot(s));
+                mc.theWorld.addEntityToWorld(-777, c);
+                break;
+            }
+            case "select":
+                // select <track> <tick>: the editor's keyframe, shown in the inspector
+                log(
+                    "select " + ((com.flurben.flashbacknh.gui.GuiReplayEditor) mc.currentScreen)
+                        .selectKeyframe(TrackType.valueOf(a[1].toUpperCase()), Integer.parseInt(a[2])));
+                break;
+            case "ease": {
+                // ease <track> <tick> <in> <out>, as fractions
+                com.flurben.flashbacknh.editor.Keyframe k = ReplayHandler.get().editor
+                    .track(TrackType.valueOf(a[1].toUpperCase()))
+                    .at(Integer.parseInt(a[2]));
+                k.easeIn = Double.parseDouble(a[3]);
+                k.easeOut = Double.parseDouble(a[4]);
+                ReplayHandler.get()
+                    .markEditorDirty();
+                break;
+            }
+            case "history":
+                log("history " + ReplayHandler.get().history.describe());
+                break;
+            case "kfcount":
+                log(
+                    "kfcount "
+                        + ReplayHandler.get().editor.track(TrackType.valueOf(a[1].toUpperCase())).keyframes.size());
+                break;
+            case "worn":
+                for (Object o : mc.theWorld.playerEntities) {
+                    net.minecraft.entity.player.EntityPlayer p = (net.minecraft.entity.player.EntityPlayer) o;
+                    log(
+                        "worn " + p.getCommandSenderName()
+                            + " "
+                            + p.getEntityId()
+                            + " "
+                            + com.flurben.flashbacknh.compat.WornItems.save(p));
+                }
                 break;
             case "place": {
                 // place <x> <y> <z> <side>: uses the held item on that face of the block, as a right click would

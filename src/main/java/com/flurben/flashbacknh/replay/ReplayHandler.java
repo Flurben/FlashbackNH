@@ -42,6 +42,7 @@ import org.apache.commons.io.FileUtils;
 import com.flurben.flashbacknh.FlashbackNH;
 import com.flurben.flashbacknh.compat.DistantHorizonsCompat;
 import com.flurben.flashbacknh.compat.MultipartCompat;
+import com.flurben.flashbacknh.compat.WornItems;
 import com.flurben.flashbacknh.editor.CameraRig;
 import com.flurben.flashbacknh.editor.EditorState;
 import com.flurben.flashbacknh.editor.KeyframeTrack;
@@ -166,6 +167,8 @@ public final class ReplayHandler implements PacketFilter.Listener {
     private float shakeYaw, shakePitch;
     private int decodeFailures;
 
+    /** Undo and redo of what is edited in this replay. */
+    public final com.flurben.flashbacknh.editor.EditHistory history = new com.flurben.flashbacknh.editor.EditHistory();
     public final CameraController cameraController = new CameraController();
     private ReplayCapes capes;
     private int ignoredDisconnects, hiddenNotifications;
@@ -185,6 +188,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
         this.stream = stream;
         this.registry = registry;
         this.editor = editor;
+        history.reset(editor);
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -238,6 +242,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             }
         }
         active = handler;
+        WornItems.clear();
         CameraEntity.forgetLast();
         DistantHorizonsCompat.enterReplay(meta.dhFolders);
         try {
@@ -277,6 +282,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             FlashbackNH.LOG.error("Error while closing replay world", t);
         }
         active = null;
+        WornItems.clear();
         if (capes != null) capes.release();
         DistantHorizonsCompat.exitReplay();
         RegistrySnapshot.revert();
@@ -290,6 +296,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
 
     public void markEditorDirty() {
         editorDirty = true;
+        history.changed();
     }
 
     public void saveEditorAsync() {
@@ -774,6 +781,11 @@ public final class ReplayHandler implements PacketFilter.Listener {
                 connection.deliver(new ReplayConnection.ActionPacket(() -> applyTileBatch(d)));
                 return;
             }
+            case ReplayFormat.REC_WORN: {
+                final byte[] d = rec.data;
+                connection.deliver(new ReplayConnection.ActionPacket(() -> WornItems.apply(mc.theWorld, d)));
+                return;
+            }
             case ReplayFormat.REC_CLEAR_WORLD:
                 // what a rewind starts from, and the point of a rewind is to keep the world
                 if (rewind == null) connection.deliver(new ReplayConnection.ActionPacket(this::clearWorld));
@@ -797,6 +809,7 @@ public final class ReplayHandler implements PacketFilter.Listener {
             case ReplayFormat.REC_LOCAL_MOVE:
             case ReplayFormat.REC_TILE_NBT:
             case ReplayFormat.REC_TILE_BATCH:
+            case ReplayFormat.REC_WORN:
                 return true;
             case ReplayFormat.REC_PACKET:
                 int id = PacketCodec.peekId(rec.data);

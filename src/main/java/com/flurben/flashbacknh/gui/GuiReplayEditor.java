@@ -282,6 +282,15 @@ public class GuiReplayEditor extends GuiScreen {
             case Keyboard.KEY_BACK:
                 deleteSelection();
                 break;
+            case Keyboard.KEY_Z:
+                if (isCtrlKeyDown()) {
+                    if (isShiftKeyDown()) redo();
+                    else undo();
+                }
+                break;
+            case Keyboard.KEY_Y:
+                if (isCtrlKeyDown()) redo();
+                break;
             case Keyboard.KEY_C:
                 if (isCtrlKeyDown()) copySelection();
                 break;
@@ -344,6 +353,8 @@ public class GuiReplayEditor extends GuiScreen {
             }
         }
 
+        // an edit counts as one step once the mouse is let go and nothing is being typed
+        if (!Mouse.isButtonDown(0) && !ui.isEditing()) h.history.settle(h.editor);
         ui.begin(mouseX, mouseY);
         h.setRigPreview(panel == Panel.PRESETS && previewPresets && !grabbed && !hideUi);
         computeLayout();
@@ -408,7 +419,7 @@ public class GuiReplayEditor extends GuiScreen {
 
     private void drawTopBar(ReplayHandler h) {
         ui.rect(0, 0, width, MENU_H, Ui.BG);
-        String[] menus = { "File", "Window", "View", "Help" };
+        String[] menus = { "File", "Edit", "Window", "View", "Help" };
         int x = 4;
         for (String m : menus) {
             int w = ui.width(m) + 10;
@@ -1062,6 +1073,11 @@ public class GuiReplayEditor extends GuiScreen {
                 items.add("Save Editor State");
                 items.add("Exit Replay");
                 break;
+            case "Edit":
+                boolean undo = h != null && h.history.canUndo(), redo = h != null && h.history.canRedo();
+                items.add((undo ? "" : "§7") + "Undo  (Ctrl+Z)");
+                items.add((redo ? "" : "§7") + "Redo  (Ctrl+Y)");
+                break;
             case "Window":
                 items.add(check(panel == Panel.PLAYERS) + "Player List");
                 items.add(check(panel == Panel.VISUALS) + "Visuals");
@@ -1100,6 +1116,10 @@ public class GuiReplayEditor extends GuiScreen {
                     h.saveEditorAsync();
                     Notifications.show("FlashbackNH", "Saved editor state");
                 } else if (index == 2) h.exit();
+                break;
+            case "Edit":
+                if (index == 0) undo();
+                else redo();
                 break;
             case "Window":
                 Panel[] panels = { Panel.PLAYERS, Panel.VISUALS, Panel.INSPECTOR, Panel.MOVEMENT, Panel.PRESETS };
@@ -1358,6 +1378,117 @@ public class GuiReplayEditor extends GuiScreen {
             .toLowerCase();
     }
 
+    /**
+     * Ease in and out of the selected keyframes, in percent of the segment before and after them. They only change
+     * smooth segments, so they are shown when one touches a selected keyframe.
+     */
+    private int easeControls(ReplayHandler h, int x, int y, int w) {
+        Keyframe first = null;
+        for (Selection s : selection) {
+            Keyframe before = s.track.lastBefore(s.keyframe.tick);
+            if (s.keyframe.interpolation == Interpolation.SMOOTH
+                || (before != null && before.interpolation == Interpolation.SMOOTH)) {
+                first = s.keyframe;
+                break;
+            }
+        }
+        if (first == null) return y;
+        double in = ui.sliderRow("Ease in", first.easeIn * 100, Keyframe.MIN_EASE * 100, 100, 1, "%.0f%%", x, y, w);
+        y += 13;
+        double out = ui.sliderRow("Ease out", first.easeOut * 100, Keyframe.MIN_EASE * 100, 100, 1, "%.0f%%", x, y, w);
+        y += 13;
+        // percent and back is not always the same number: only a real move of a slider is a change
+        boolean inChanged = Math.abs(in - first.easeIn * 100) > 1e-6;
+        boolean outChanged = Math.abs(out - first.easeOut * 100) > 1e-6;
+        if (inChanged || outChanged) {
+            for (Selection s : selection) {
+                if (inChanged) s.keyframe.easeIn = in / 100;
+                else s.keyframe.easeOut = out / 100;
+            }
+            h.markEditorDirty();
+        }
+        if (ui.button("Reset easing", x, y, w, 12)) {
+            for (Selection s : selection) s.keyframe.easeIn = s.keyframe.easeOut = Keyframe.DEFAULT_EASE;
+            h.markEditorDirty();
+        }
+        return y + 15;
+    }
+
+    /**
+     * How fast the track moves from the keyframe before this one to the one after, so that a jump in speed or a sudden
+     * start shows. For the camera the speed of its position, for other tracks of their first value.
+     */
+    private int drawSpeedGraph(KeyframeTrack track, Keyframe k, int x, int y, int w) {
+        Keyframe before = track.lastBefore(k.tick), after = track.nextAfter(k.tick);
+        int from = before != null ? before.tick : k.tick, to = after != null ? after.tick : k.tick;
+        if (to <= from) return y;
+        final int gh = 24;
+        int samples = Math.max(2, w - 2);
+        double[] speed = new double[samples];
+        double max = 1e-9;
+        double step = (to - from) / (double) samples;
+        for (int i = 0; i < samples; i++) {
+            double t = from + (i + 0.5) * step;
+            double[] a = track.evaluate(t - step / 2), b = track.evaluate(t + step / 2);
+            double d;
+            if (track.type == TrackType.CAMERA) {
+                double dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+                d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            } else d = Math.abs(b[0] - a[0]);
+            speed[i] = d / step;
+            max = Math.max(max, speed[i]);
+        }
+        ui.text("Speed", x, y, Ui.TEXT_DIM);
+        y += 10;
+        ui.rect(x, y, w, gh, 0x60000000);
+        int kx = x + 1 + (int) ((k.tick - from) / (double) (to - from) * samples);
+        ui.rect(kx, y, 1, gh, 0x80FFFFFF);
+        for (int i = 0; i < samples; i++) {
+            int bh = (int) Math.round(speed[i] / max * (gh - 2));
+            if (bh > 0) ui.rect(x + 1 + i, y + gh - 1 - bh, 1, bh, track.type.color);
+        }
+        return y + gh + 4;
+    }
+
+    private void undo() {
+        ReplayHandler h = handler();
+        if (h == null) return;
+        if (h.history.undo(h.editor)) afterHistory(h, "Undone");
+        else Notifications.show("FlashbackNH", "Nothing to undo");
+    }
+
+    private void redo() {
+        ReplayHandler h = handler();
+        if (h == null) return;
+        if (h.history.redo(h.editor)) afterHistory(h, "Redone");
+        else Notifications.show("FlashbackNH", "Nothing to redo");
+    }
+
+    /** Selects the keyframe of this track at this tick and shows it in the inspector. False when there is none. */
+    public boolean selectKeyframe(TrackType type, int tick) {
+        ReplayHandler h = handler();
+        if (h == null) return false;
+        KeyframeTrack track = h.editor.track(type);
+        Keyframe k = track.at(tick);
+        if (k == null) return false;
+        selection.clear();
+        selection.add(new Selection(track, k));
+        panel = Panel.INSPECTOR;
+        panelScroll = 0;
+        return true;
+    }
+
+    /** The editor's contents were replaced: nothing selected or open may point at what was there. */
+    private void afterHistory(ReplayHandler h, String what) {
+        selection.clear();
+        contextItems = null;
+        openMenu = null;
+        draggingKeys = false;
+        ui.closePopups();
+        h.markEditorDirty();
+        Notifications.show("FlashbackNH", what);
+    }
+
     private int drawInspector(ReplayHandler h, int x, int y, int w) {
         if (selection.isEmpty()) {
             ui.text("No keyframe selected.", x, y, Ui.TEXT_DIM);
@@ -1373,6 +1504,7 @@ public class GuiReplayEditor extends GuiScreen {
             if (ui.button("Interpolation...", x, y, w, 12))
                 openKeyframeMenu(selection.get(0).track, selection.get(0).keyframe, x, y);
             y += 14;
+            y = easeControls(h, x, y, w);
             if (ui.button("Delete", x, y, w, 12)) deleteSelection();
             return y + 14;
         }
@@ -1393,6 +1525,8 @@ public class GuiReplayEditor extends GuiScreen {
             h.markEditorDirty();
         }
         y += 15;
+        y = easeControls(h, x, y, w);
+        y = drawSpeedGraph(s.track, k, x, y, w);
         for (int c = 0; c < type.channels.length && c < k.values.length; c++) {
             double nv = channelInput(type, c, k.values[c], x, y, w);
             if (nv != k.values[c]) {
@@ -1703,8 +1837,9 @@ public class GuiReplayEditor extends GuiScreen {
             "Ctrl while flying: boost", "Space: play / pause", "Left / Right: -/+ 1 tick", "Shift+Left/Right: -/+ 1 s",
             "Up / Down: next/prev keyframe", "I / O: in / out point", "K: camera keyframe", "M: add marker",
             "Drag a number or click to type", "Double-click a slider to type", "Del: delete keyframes",
-            "Ctrl+C / Ctrl+V: copy/paste", "Ctrl+A: select all", "Ctrl+drag playhead: preview",
-            "Scroll on timeline: zoom", "F1: hide editor UI", "Ctrl+E: export", "Esc: replay menu" };
+            "Ctrl+C / Ctrl+V: copy/paste", "Ctrl+Z / Ctrl+Y: undo/redo", "Ctrl+A: select all",
+            "Ctrl+drag playhead: preview", "Scroll on timeline: zoom", "F1: hide editor UI", "Ctrl+E: export",
+            "Esc: replay menu" };
         for (String l : lines) {
             ui.text(ui.trim(l, w), x, y, Ui.TEXT_DIM);
             y += 10;

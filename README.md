@@ -31,6 +31,11 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
 - Capes from mods (GregTech, Galacticraft, Galaxy Space and others that change the player's cape texture) are recorded
   with each player and shown in the replay, even though the mod packets or downloads that gave them out are not
   replayed. Capes that only exist as a download are stored in the replay as an image.
+- What players wear or hold through other mods is recorded with each player and shown on them in the replay: Baubles
+  (including Botania's cosmetic items, Extra Utilities' angel ring wings and other baubles drawn on the player), the
+  Backhand offhand item, Galacticraft's oxygen gear and parachute, and worn
+  Adventure Backpacks and Backpacks. Servers do not always send this to the player it belongs to, and a recording that
+  starts mid-session missed what they sent earlier, so FlashbackNH stores it itself.
 
 ### Replay viewer & editor
 - Free camera (hold right mouse over the world, WASD/Space/Shift, scroll for speed, Ctrl to boost) with optional
@@ -38,15 +43,20 @@ FlashbackNH is client-side only. It works in singleplayer and on servers; the se
 - Play, pause, slow motion and fast forward (0.05x to 64x), skip forwards/backwards, frame stepping, and seeking to any
   point on the timeline. Pausing and slow motion are perfectly smooth (the world's partial tick follows the replay clock).
 - Timeline with markers, in/out points, zoom and scroll.
-- Keyframe tracks with Smooth (spline), Linear, Ease In/Out, Ease In, Ease Out and Hold interpolation:
+- Keyframe tracks with Smooth, Linear, Ease In/Out, Ease In, Ease Out and Hold interpolation. Smooth movement never
+  changes speed suddenly: the path starts and ends at rest, and next to a Linear or eased segment it takes that
+  segment's speed. Each keyframe's **Ease in** and **Ease out** set how long the camera takes to slow into it and speed
+  away from it, and the inspector shows a graph of the speed around the keyframe.
   - **Camera** (position, rotation and roll)
   - **FOV**
   - **Time of Day**
   - **Speed** (playback/export speed, for speed ramps and timelapses)
   - **Camera Shake**
   - **Weather** (rain and thunder strength, 0 to 1)
-- Keyframe editing: select, multi-select, drag, copy/paste, delete, per-keyframe interpolation, numeric inspector,
-  "set to current camera", camera path preview in the world.
+- Keyframe editing: select, multi-select, drag, copy/paste, delete, per-keyframe interpolation and easing, numeric
+  inspector, "set to current camera", camera path preview in the world.
+- Undo and redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and the Edit menu) for keyframes, easing, in/out points, markers,
+  visuals and camera presets. Dragging a keyframe or a slider is one step.
 - Camera presets that follow a moving player or mob while the replay plays, without keyframes:
   - **Orbit** circles the target at a set radius, height and speed.
   - **Follow** moves with the target at a set offset, which can turn with the target's heading.
@@ -196,6 +206,13 @@ results read from screenshots, exported files and logs.
   recorded the old way, and one removed during the recording disappears in the replay without ending it.
 - GregTech: machine hulls, basic machines, wires and pipes in replays and exports. Live and replayed views match under
   shaders.
+- Worn items (0.4.0), singleplayer, recording started mid-session: a Botania cosmetic, an Extra Utilities angel ring,
+  Galacticraft oxygen gear and tanks, an Adventure Backpack, and a Backhand offhand item put on after the recording
+  started all show on the player in the replay as they did live. Galacticraft draws the oxygen mask only on your own
+  player, so it shows live in third person but not in the replay, the same as other players see you on a server.
+- Camera easing and undo (0.4.0): unit tests for speed without jumps at keyframes and next to Linear segments, starting
+  and ending at rest, ease settings, and the default ease giving the same curve as before; in the editor, the ease
+  sliders and speed graph, undo and redo of adding keyframes and of easing through the editor's own undo and redo.
 - No crashes and no failed replay packets in the final runs.
 
 **Not tested**
@@ -212,6 +229,8 @@ results read from screenshots, exported files and logs.
 - Export speed with shader packs and with Distant Horizons since the 0.3.0 speed work.
 - Long recordings, large bases, public servers and other versions of the pack.
 - Distant Horizons on servers, across dimension changes, with other DH or Angelica versions, or with large databases.
+- Worn items on a server, of other players, and the Backpacks mod's worn backpack (supported but not tried). Cosmetic
+  armor mods that are not in GTNH, such as Cosmetic Armor, are not supported.
 - Other addons. FalseTweaks 4.4.5 crashed at startup in the pack with FlashbackNH installed; the cause was not determined.
 
 ## Installation
@@ -242,6 +261,7 @@ results read from screenshots, exported files and logs.
 | M | Add a marker |
 | Delete | Delete selected keyframes |
 | Ctrl+C / Ctrl+V / Ctrl+A | Copy / paste / select all keyframes |
+| Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) | Undo / redo |
 | Ctrl + drag playhead | Preview the camera path |
 | Scroll over the timeline | Zoom |
 | F1 | Hide the editor UI |

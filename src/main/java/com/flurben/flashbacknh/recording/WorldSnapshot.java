@@ -59,6 +59,7 @@ import net.minecraft.world.chunk.IChunkProvider;
 
 import com.flurben.flashbacknh.FlashbackNH;
 import com.flurben.flashbacknh.compat.MultipartCompat;
+import com.flurben.flashbacknh.compat.WornItems;
 import com.flurben.flashbacknh.format.ReplayFormat;
 import com.flurben.flashbacknh.format.TileBatch;
 import com.flurben.flashbacknh.mixins.early.InvokerEntityTrackerEntry;
@@ -362,6 +363,11 @@ public final class WorldSnapshot {
             } catch (Throwable t) {
                 if (failures.getAndIncrement() < 20) FlashbackNH.LOG.debug("Snapshot: unable to spawn {}", e, t);
             }
+        }
+        // what other mods have players wear, which a server sends when a player comes into view
+        for (Entity e : entities) {
+            if (e == self || e.isDead || !(e instanceof EntityPlayer)) continue;
+            raw(ReplayFormat.REC_WORN, WornItems.record((EntityPlayer) e));
         }
         // attachments after every entity exists
         for (Entity e : entities) {

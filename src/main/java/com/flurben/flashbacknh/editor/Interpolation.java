@@ -50,24 +50,26 @@ public enum Interpolation {
         }
     }
 
+    /** A cubic Bezier curve through p0 and p3 with control points p1 and p2, at parameter u. */
+    public static double bezier(double p0, double p1, double p2, double p3, double u) {
+        double v = 1 - u;
+        return v * v * v * p0 + 3 * v * v * u * p1 + 3 * v * u * u * p2 + u * u * u * p3;
+    }
+
     /**
-     * Interpolates between p1 and p2 with neighbours p0 and p3 (used by SMOOTH, a Catmull-Rom spline with tension 0.5
-     * and non-uniform timing).
+     * The parameter at which a curve in time, from 0 to 1 with control points at {@code a} and {@code 1 - b}, reaches
+     * time t. With both at a third, time runs evenly and this is t itself.
      */
-    public static double catmullRom(double p0, double p1, double p2, double p3, double t0, double t1, double t2,
-        double t3, double t) {
-        // Hermite form with finite-difference tangents that respect uneven keyframe spacing
-        double dt = t2 - t1;
-        if (dt <= 0) return p1;
-        double m1 = (t2 - t0) > 0 ? (p2 - p0) / (t2 - t0) * dt : (p2 - p1);
-        double m2 = (t3 - t1) > 0 ? (p3 - p1) / (t3 - t1) * dt : (p2 - p1);
-        double s = t;
-        double s2 = s * s;
-        double s3 = s2 * s;
-        double h00 = 2 * s3 - 3 * s2 + 1;
-        double h10 = s3 - 2 * s2 + s;
-        double h01 = -2 * s3 + 3 * s2;
-        double h11 = s3 - s2;
-        return h00 * p1 + h10 * m1 + h01 * p2 + h11 * m2;
+    public static double bezierTime(double a, double b, double t) {
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        if (Math.abs(a - 1.0 / 3.0) < 1e-9 && Math.abs(b - 1.0 / 3.0) < 1e-9) return t;
+        double lo = 0, hi = 1, u = t;
+        for (int i = 0; i < 40; i++) {
+            u = (lo + hi) / 2;
+            if (bezier(0, a, 1 - b, 1, u) < t) lo = u;
+            else hi = u;
+        }
+        return (lo + hi) / 2;
     }
 }

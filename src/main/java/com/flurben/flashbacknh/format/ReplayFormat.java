@@ -59,6 +59,8 @@ public final class ReplayFormat {
      * long position of that record in the stream. Since version 2.
      */
     public static final byte REC_REPEAT = 8;
+    /** What a player wears through other mods: see {@code WornItems}. Since 0.4.0. */
+    public static final byte REC_WORN = 9;
 
     private ReplayFormat() {}
 }
